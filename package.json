@@ -1,0 +1,21 @@
+{
+  "name": "ai-advice-notary",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@typechain/hardhat": "^9.1.0",
+    "fs-extra": "^11.3.3",
+    "hardhat": "^2.28.2",
+    "solc": "^0.8.24",
+    "typechain": "^8.3.2"
+  }
+}
