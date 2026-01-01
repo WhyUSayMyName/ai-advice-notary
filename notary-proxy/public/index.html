@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Advice Notary</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 24px; max-width: 980px; }
+    h1 { margin: 0 0 12px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
+    label { display: block; font-weight: 600; margin: 10px 0 6px; }
+    textarea, input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 10px; border: 1px solid #ccc; }
+    textarea { min-height: 120px; resize: vertical; }
+    button { padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; font-weight: 700; }
+    button.primary { background: #111; color: #fff; }
+    button.secondary { background: #eee; }
+    .actions { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    pre { background: #0b0b0b; color: #eaeaea; padding: 12px; border-radius: 12px; overflow: auto; }
+    .small { color: #666; font-size: 13px; }
+    .ok { color: #0a7a2f; font-weight: 700; }
+    .bad { color: #b00020; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>AI Advice Notary</h1>
+  <div class="small">Локальный интерфейс к твоему notary-proxy (Hardhat + контракт AdviceNotary)</div>
+
+  <div class="row" style="margin-top:16px;">
+    <div class="card">
+      <h2 style="margin:0 0 8px;">Нотаризация</h2>
+
+      <label>Prompt</label>
+      <textarea id="prompt" placeholder="Вставь промпт..."></textarea>
+
+      <label>Answer</label>
+      <textarea id="answer" placeholder="Вставь ответ..."></textarea>
+
+      <label>Model (опционально)</label>
+      <input id="model" placeholder="demo-llm" value="demo-llm" />
+
+      <div class="actions">
+        <button class="primary" id="btnNotarize">Notarize</button>
+        <button class="secondary" id="btnVerify">Verify</button>
+        <button class="secondary" id="btnHealth">Health</button>
+      </div>
+
+      <div id="status" class="small" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 8px;">Чтение из блокчейна</h2>
+
+      <label>recordHash (bytes32)</label>
+      <input id="recordHash" placeholder="0x..." />
+
+      <div class="actions">
+        <button class="secondary" id="btnGet">Get record</button>
+        <button class="secondary" id="btnUseLast">Use last recordHash</button>
+      </div>
+
+      <div class="small" style="margin-top:10px;">
+        Подсказка: после notarize появится recordHash — можно нажать “Use last”.
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2 style="margin:0 0 8px;">Результат</h2>
+    <pre id="out">{}</pre>
+  </div>
+
+<script>
+  const out = (obj) => {
+    document.getElementById("out").textContent = JSON.stringify(obj, null, 2);
+  };
+
+  const setStatus = (html) => {
+    document.getElementById("status").innerHTML = html || "";
+  };
+
+  let lastRecordHash = null;
+
+  async function postJson(path, body) {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error || ("HTTP " + r.status));
+    return data;
+  }
+
+  async function getJson(path) {
+    const r = await fetch(path);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error || ("HTTP " + r.status));
+    return data;
+  }
+
+  function getForm() {
+    return {
+      prompt: document.getElementById("prompt").value || "",
+      answer: document.getElementById("answer").value || "",
+      model: document.getElementById("model").value || "unknown",
+    };
+  }
+
+  document.getElementById("btnHealth").onclick = async () => {
+    try {
+      setStatus("Запрос /health ...");
+      const data = await getJson("/health");
+      out(data);
+      setStatus(`<span class="ok">OK</span> RPC: ${data.rpc} | block: ${data.block}`);
+    } catch (e) {
+      setStatus(`<span class="bad">ERROR</span> ${e.message}`);
+    }
+  };
+
+  document.getElementById("btnNotarize").onclick = async () => {
+    try {
+      const body = getForm();
+      setStatus("Отправляю /notarize ...");
+      const data = await postJson("/notarize", body);
+      out(data);
+      lastRecordHash = data.recordHash;
+      setStatus(`<span class="ok">Notarized</span> recordHash: ${data.recordHash}`);
+      document.getElementById("recordHash").value = data.recordHash;
+    } catch (e) {
+      setStatus(`<span class="bad">ERROR</span> ${e.message}`);
+    }
+  };
+
+  document.getElementById("btnVerify").onclick = async () => {
+    try {
+      const body = getForm();
+      setStatus("Отправляю /verify ...");
+      const data = await postJson("/verify", body);
+      out(data);
+
+      const badge = data.matches ? `<span class="ok">MATCH</span>` : `<span class="bad">NO MATCH</span>`;
+      setStatus(`${badge} exists=${data.exists} recordHash=${data.recordHash}`);
+      lastRecordHash = data.recordHash;
+      document.getElementById("recordHash").value = data.recordHash;
+    } catch (e) {
+      setStatus(`<span class="bad">ERROR</span> ${e.message}`);
+    }
+  };
+
+  document.getElementById("btnGet").onclick = async () => {
+    try {
+      const rh = document.getElementById("recordHash").value.trim();
+      if (!rh) throw new Error("recordHash пустой");
+      setStatus("Читаю /records/:recordHash ...");
+      const data = await getJson(`/records/${encodeURIComponent(rh)}`);
+      out(data);
+      const badge = data.exists ? `<span class="ok">FOUND</span>` : `<span class="bad">NOT FOUND</span>`;
+      setStatus(`${badge} author=${data.author} ts=${data.timestamp}`);
+    } catch (e) {
+      setStatus(`<span class="bad">ERROR</span> ${e.message}`);
+    }
+  };
+
+  document.getElementById("btnUseLast").onclick = () => {
+    if (lastRecordHash) document.getElementById("recordHash").value = lastRecordHash;
+  };
+
+  // авто health при старте
+  (async () => {
+    try {
+      const data = await getJson("/health");
+      out(data);
+      setStatus(`<span class="ok">OK</span> Готово. block=${data.block}`);
+    } catch (e) {
+      setStatus(`<span class="bad">ERROR</span> ${e.message} (проверь что proxy запущен)`);
+    }
+  })();
+</script>
+</body>
+</html>
