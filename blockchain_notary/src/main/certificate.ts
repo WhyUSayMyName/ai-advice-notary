@@ -1,7 +1,7 @@
-import "dotenv/config"
 import fs from "node:fs"
 import path from "node:path"
-import PDFDocument from "pdfkit"
+import { PDFDocument, rgb } from "pdf-lib"
+import fontkit from "@pdf-lib/fontkit"
 
 export type CertificateData = {
   filePath: string
@@ -14,64 +14,121 @@ export type CertificateData = {
   txHash: string
 }
 
+// dev-путь к шрифту (как у тебя в проекте)
+const FONT_PATH = path.resolve(process.cwd(), "src", "assets", "fonts", "arial.ttf")
+
 export async function generateCertificatePdf(outPath: string, data: CertificateData) {
-  await new Promise<void>((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 50 })
-    const stream = fs.createWriteStream(outPath)
-    doc.pipe(stream)
+  if (!fs.existsSync(FONT_PATH)) {
+    throw new Error(`Font file not found: ${FONT_PATH}`)
+  }
 
-    const fileName = path.basename(data.filePath)
-    const dt = new Date(data.timestamp * 1000)
+  const fontBytes = fs.readFileSync(FONT_PATH)
+  const pdfDoc = await PDFDocument.create()
+  pdfDoc.registerFontkit(fontkit)
 
-    // Header
-    doc.fontSize(20).text("Blockchain Notary — Certificate", { align: "center" })
-    doc.moveDown(0.5)
-    doc.fontSize(10).fillColor("#666").text("Proof of existence / notarization record", { align: "center" })
-    doc.moveDown(1.5)
-    doc.fillColor("#000")
+  const font = await pdfDoc.embedFont(fontBytes, { subset: true })
 
-    // Main info box
-    doc.fontSize(12).text("Document", { underline: true })
-    doc.moveDown(0.3)
-    doc.fontSize(11).text(`File name: ${fileName}`)
-    doc.text(`File path: ${data.filePath}`)
-    doc.moveDown(0.8)
+  const page = pdfDoc.addPage([595.28, 841.89]) // A4 in points
+  const { width, height } = page.getSize()
 
-    doc.fontSize(12).text("Hash (SHA-256)", { underline: true })
-    doc.moveDown(0.3)
-    doc.font("Courier").fontSize(10).text(data.hashHex, { lineBreak: true })
-    doc.font("Helvetica")
-    doc.moveDown(0.8)
+  const margin = 50
+  let y = height - margin
 
-    doc.fontSize(12).text("On-chain record", { underline: true })
-    doc.moveDown(0.3)
-    doc.fontSize(11).text(`Chain ID: ${data.chainId}`)
-    doc.text(`RPC: ${data.rpcUrl}`)
-    doc.text(`Notary contract: ${data.notaryAddress}`)
-    doc.text(`Author: ${data.author}`)
-    doc.text(`Timestamp (local): ${dt.toLocaleString()}`)
-    doc.text(`Timestamp (unix): ${data.timestamp}`)
-    doc.moveDown(0.6)
+  const fileName = path.basename(data.filePath)
+  const dt = new Date(data.timestamp * 1000)
 
-    doc.fontSize(11).text("Transaction", { underline: true })
-    doc.moveDown(0.3)
-    doc.font("Courier").fontSize(10).text(data.txHash)
-    doc.font("Helvetica")
-    doc.moveDown(1.2)
+  const drawText = (text: string, size = 11, opts?: { color?: ReturnType<typeof rgb> }) => {
+    page.drawText(text, {
+      x: margin,
+      y,
+      size,
+      font,
+      color: opts?.color ?? rgb(0, 0, 0),
+    })
+    y -= size + 6
+  }
 
-    doc.fillColor("#666").fontSize(9).text(
-      "This certificate confirms that the hash was recorded on the specified blockchain network.\n" +
-        "To verify: recompute SHA-256 of the file and compare with the hash above, then check the record in the contract.",
-      { align: "left" }
-    )
+  const drawTitleCenter = (text: string, size = 20) => {
+    const textWidth = font.widthOfTextAtSize(text, size)
+    page.drawText(text, {
+      x: (width - textWidth) / 2,
+      y,
+      size,
+      font,
+      color: rgb(0, 0, 0),
+    })
+    y -= size + 8
+  }
 
-    // Footer
-    doc.moveDown(2)
-    doc.fillColor("#999").fontSize(8).text(`Generated: ${new Date().toLocaleString()}`, { align: "right" })
+  const drawSubCenter = (text: string, size = 10) => {
+    const textWidth = font.widthOfTextAtSize(text, size)
+    page.drawText(text, {
+      x: (width - textWidth) / 2,
+      y,
+      size,
+      font,
+      color: rgb(0.4, 0.4, 0.4),
+    })
+    y -= size + 10
+  }
 
-    doc.end()
+  // Header
+  drawTitleCenter("Blockchain Notary — Certificate", 20)
+  drawSubCenter("Proof of existence / notarization record", 10)
+  y -= 10
 
-    stream.on("finish", () => resolve())
-    stream.on("error", reject)
+  // Document block
+  drawText("Document", 12)
+  y -= 2
+  drawText(`File name: ${fileName}`, 11)
+  drawText(`File path: ${data.filePath}`, 11)
+  y -= 10
+
+  // Hash block
+  drawText("Hash (SHA-256)", 12)
+  y -= 2
+  drawText(data.hashHex, 10)
+  y -= 10
+
+  // On-chain block
+  drawText("On-chain record", 12)
+  y -= 2
+  drawText(`Chain ID: ${data.chainId}`, 11)
+  drawText(`RPC: ${data.rpcUrl}`, 11)
+  drawText(`Notary contract: ${data.notaryAddress}`, 11)
+  drawText(`Author: ${data.author}`, 11)
+  drawText(`Timestamp (local): ${dt.toLocaleString()}`, 11)
+  drawText(`Timestamp (unix): ${data.timestamp}`, 11)
+  y -= 10
+
+  // Transaction block
+  drawText("Transaction", 12)
+  y -= 2
+  drawText(data.txHash, 10)
+  y -= 16
+
+  // Footer note
+  const note =
+    "This certificate confirms that the hash was recorded on the specified blockchain network.\n" +
+    "To verify: recompute SHA-256 of the file and compare it with the hash above, then check the record in the notary contract."
+
+  const noteLines = note.split("\n")
+  for (const line of noteLines) {
+    drawText(line, 9, { color: rgb(0.4, 0.4, 0.4) })
+  }
+
+  // Generated timestamp bottom-right
+  const gen = `Generated: ${new Date().toLocaleString()}`
+  const genSize = 8
+  const genWidth = font.widthOfTextAtSize(gen, genSize)
+  page.drawText(gen, {
+    x: width - margin - genWidth,
+    y: margin - 10,
+    size: genSize,
+    font,
+    color: rgb(0.6, 0.6, 0.6),
   })
+
+  const pdfBytes = await pdfDoc.save()
+  fs.writeFileSync(outPath, pdfBytes)
 }

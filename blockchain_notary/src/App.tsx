@@ -76,19 +76,22 @@ const canNotarize = canCheck && notarized === false
     }
   }
 
-  const notarizeNow = async () => {
-    if (!canCheck) return
+const notarizeNow = async () => {
+  if (!canCheck) return
 
-    log(`Нотариат: отправка TX для ${hashHex}`)
-    const r = await window.api.notaryNotarize(hashHex, rpcUrl)
-    if (!r.ok) {
-      log(`Ошибка TX: ${r.error}`)
-      return
-    }
-
-    log(`TX OK: ${r.txHash} (block ${r.blockNumber})`)
-    await check()
+  log(`Нотариат: отправка TX для ${hashHex}`)
+  const r = await window.api.notaryNotarize(hashHex, rpcUrl)
+  if (!r.ok) {
+    log(`Ошибка TX: ${r.error}`)
+    return
   }
+
+  setTxHash(r.txHash ?? "") // ✅ КЛЮЧЕВАЯ СТРОКА
+
+  log(`TX OK: ${r.txHash} (block ${r.blockNumber})`)
+  await check()
+}
+
   const savePdf = async () => {
   if (!filePath || !hashHex || !record || !txHash) {
     log("Для PDF нужны: файл, hash, record (author/timestamp) и txHash")
@@ -113,6 +116,7 @@ const canNotarize = canCheck && notarized === false
 
   const pickFile = async () => {
     log("Выбор файла…")
+    setTxHash("")
     const res = await window.api.pickAndHash()
     if (!res.ok) {
       if (res.canceled) log("Отменено пользователем")

@@ -125,8 +125,14 @@ ipcMain.handle(
 
       return { ok: true, filePath: save.filePath }
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) }
-    }
+  console.error("[cert:savePdf] ERROR:", e)
+
+  return {
+    ok: false,
+    error: e instanceof Error ? (e.stack ?? e.message) : String(e),
+  }
+}
+
   }
 )
 // ------------------------------------
