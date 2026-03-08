@@ -5,7 +5,7 @@ function run(command, args, name, options = {}) {
   console.log(`▶ ${name}`)
   const p = spawn(command, args, {
     stdio: "inherit",
-    shell: true, // ✅ важно для Windows (cmd/npx/npm)
+    shell: true,
     ...options,
   })
   return new Promise((resolve, reject) => {
@@ -19,8 +19,7 @@ function run(command, args, name, options = {}) {
 
 async function main() {
   // 1) Hardhat node
-  // ⚠️ Hardhat проект у тебя, скорее всего, в корне репозитория (на уровень выше),
-  // поэтому запускаем hardhat из .. (если у тебя hardhat реально внутри blockchain_notary — убери cwd)
+
   const hardhatCwd = process.cwd().endsWith("blockchain_notary")
     ? process.cwd().replace(/blockchain_notary$/, "")
     : process.cwd()
@@ -51,7 +50,6 @@ async function main() {
 
   // 4) Start Vite/Electron
   console.log("4) Starting Vite/Electron…")
-  // Тоже не await — dev-сервер должен жить
   spawn("npm", ["run", "dev"], {
     stdio: "inherit",
     shell: true,

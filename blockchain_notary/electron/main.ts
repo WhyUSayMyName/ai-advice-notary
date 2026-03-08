@@ -1,3 +1,4 @@
+import "../src/main/index"
 import { app, BrowserWindow, ipcMain, dialog } from "electron"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
@@ -8,12 +9,11 @@ import {
   notaryIsNotarized,
   notaryGetRecord,
   notaryNotarize,
-} from "../src/main/notary" // ⚠️ файл должен называться notary.ts
+} from "../src/main/notary"
 import { generateCertificatePdf } from "../src/main/certificate"
 
 import "dotenv/config"
 import { JsonRpcProvider } from "ethers"
-
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, "..")
@@ -27,8 +27,6 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : RENDERER_DIST
 
 let win: BrowserWindow | null = null
-
-// ---------------- IPC ----------------
 
 ipcMain.handle("rpc:connect", async (_e, rpcUrl: string) => {
   try {
@@ -50,6 +48,15 @@ ipcMain.handle("file:pickAndHash", async () => {
     }
 
     const filePath = res.filePaths[0]
+    const hashHex = await sha256FileHex(filePath)
+    return { ok: true, filePath, hashHex }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
+ipcMain.handle("file:hashPath", async (_e, filePath: string) => {
+  try {
     const hashHex = await sha256FileHex(filePath)
     return { ok: true, filePath, hashHex }
   } catch (e) {
@@ -125,17 +132,10 @@ ipcMain.handle(
 
       return { ok: true, filePath: save.filePath }
     } catch (e) {
-  console.error("[cert:savePdf] ERROR:", e)
-
-  return {
-    ok: false,
-    error: e instanceof Error ? (e.stack ?? e.message) : String(e),
-  }
-}
-
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
   }
 )
-// ------------------------------------
 
 function createWindow() {
   win = new BrowserWindow({
@@ -156,5 +156,3 @@ app.whenReady().then(createWindow)
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()
 })
-
-app.whenReady().then(createWindow)
