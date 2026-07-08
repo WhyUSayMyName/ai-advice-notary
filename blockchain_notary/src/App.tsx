@@ -267,6 +267,9 @@ export default function App() {
     if (r.hash) setHashHex(r.hash)
     setTxHash(r.txHash ?? "")
 
+    if (r.unchanged) {
+      log("Файл не изменился с последней версии — новая версия не создавалась")
+    }
     if (r.alreadyNotarized) {
       log("Эта версия уже была нотариально записана")
     } else {
@@ -354,7 +357,11 @@ export default function App() {
     }
 
     if (res.hash) setHashHex(res.hash)
-    log(`Новая версия сохранена: ${res.hash}`)
+    if (res.unchanged) {
+      log("Файл не изменился с последней версии — новая версия не создавалась")
+    } else {
+      log(`Новая версия сохранена: ${res.hash}`)
+    }
     await refreshAll()
     await checkHash(res.hash ?? hashHex)
   }

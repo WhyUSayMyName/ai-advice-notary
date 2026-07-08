@@ -35,26 +35,23 @@ export async function registerArtifactVersion(
 ) {
   const hash = await sha256FileHex(filePath)
 
-  const existing = getArtifactByHash(hash)
-  if (!existing) {
-    createArtifactVersion(artifactId, filePath, hash, displayName)
-  }
-
-  const localRecord = getArtifactByHash(hash)
+  // Конфликт со старой версией (HashConflictError) уходит наверх — IPC-слой
+  // превратит его в { ok: false, error } с понятным текстом
+  const result = createArtifactVersion(artifactId, filePath, hash, displayName)
 
   return {
     hash,
-    localRecord,
+    unchanged: result.unchanged,
+    localRecord: result.record,
   }
 }
 
 export async function createNewArtifact(filePath: string, displayName?: string) {
   const hash = await sha256FileHex(filePath)
 
-  const existing = getArtifactByHash(hash)
-  if (!existing) {
-    createArtifact(filePath, hash, displayName)
-  }
+  // Одинаковое содержимое может числиться в разных артефактах —
+  // «создать новый» всегда создаёт новый документ
+  createArtifact(filePath, hash, displayName)
 
   const localRecord = getArtifactByHash(hash)
 
@@ -105,10 +102,7 @@ export async function notarizeArtifactVersion(
 ) {
   const hash = await sha256FileHex(filePath)
 
-  const existing = getArtifactByHash(hash)
-  if (!existing) {
-    createArtifactVersion(artifactId, filePath, hash, displayName)
-  }
+  const versionResult = createArtifactVersion(artifactId, filePath, hash, displayName)
 
   const chainState = await notaryIsNotarized(hash, rpcUrl)
 
@@ -117,6 +111,7 @@ export async function notarizeArtifactVersion(
 
     return {
       hash,
+      unchanged: versionResult.unchanged,
       alreadyNotarized: true,
       txHash: record?.blockchain_tx ?? null,
       artifact: record ?? null,
@@ -131,6 +126,7 @@ export async function notarizeArtifactVersion(
 
   return {
     hash,
+    unchanged: versionResult.unchanged,
     alreadyNotarized: false,
     txHash: result.txHash,
     blockNumber: result.blockNumber,

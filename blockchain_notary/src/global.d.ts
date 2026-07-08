@@ -120,6 +120,8 @@ type VersionChainReport = {
       ) => Promise<{
         ok: boolean
         hash?: string
+        /** true — файл не изменился с последней версии, новая версия не создавалась */
+        unchanged?: boolean
         localRecord?: ArtifactRecord
         error?: string
       }>
@@ -141,6 +143,8 @@ type VersionChainReport = {
       ) => Promise<{
         ok: boolean
         hash?: string
+        /** true — файл не изменился с последней версии, новая версия не создавалась */
+        unchanged?: boolean
         alreadyNotarized?: boolean
         txHash?: string | null
         blockNumber?: number | null
