@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 /// @title AdviceNotary
-/// @notice Блокчейн-нотариат для фиксации рекомендаций LLM-ассистентов
+/// @notice Блокчейн-нотариат для фиксации рекомендаций документов
 contract AdviceNotary {
     struct Record {
         address author;      // кто зафиксировал

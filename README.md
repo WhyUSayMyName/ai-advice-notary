@@ -1,13 +1,77 @@
-# Sample Hardhat Project
+# AI Advice Notary
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.
+Система доказуемой фиксации неизменности цифровых данных: документы хранятся off-chain,
+а их криптографические хеши (SHA-256) фиксируются в блокчейне как независимый «якорь доверия».
+Это позволяет внешнему аудитору постфактум обнаружить подмену или уничтожение документа,
+не доверяя оператору системы хранения.
 
-Try running some of the following tasks:
+Система **обнаруживает** нарушения, но не предотвращает их — границы применимости
+и модель угроз описаны в проектной документации.
+
+## Состав репозитория
+
+| Каталог | Назначение |
+|---|---|
+| `contracts/` | Смарт-контракты реестра фиксации (Solidity) |
+| `scripts/` | Скрипты деплоя контрактов (Hardhat) |
+| `test/` | Тесты контрактов |
+| `blockchain_notary/` | Десктоп-приложение (Electron + React): хеширование, реестр артефактов, версии, аудит, PDF-сертификаты |
+| `notary-proxy/` | HTTP-прокси к контракту (экспериментальный) |
+
+## Требования
+
+- Node.js 18+
+- npm
+
+## Установка
 
 ```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat ignition deploy ./ignition/modules/Lock.ts
+npm install
+cd blockchain_notary
+npm install
 ```
+
+## Быстрый старт (всё одной командой)
+
+```shell
+cd blockchain_notary
+npm run dev:all
+```
+
+Скрипт поднимает локальный узел Hardhat, деплоит контракт `Notary`
+и запускает приложение (Vite + Electron).
+
+Перед первым запуском создайте `blockchain_notary/.env` по образцу
+[`blockchain_notary/.env.example`](blockchain_notary/.env.example) —
+в `NOTARY_PK` укажите приватный ключ Account #0 из вывода `npx hardhat node`.
+
+## Запуск по шагам
+
+```shell
+# 1. Локальный блокчейн-узел (оставить запущенным)
+npx hardhat node
+
+# 2. Деплой контракта (адрес запишется в .env автоматически)
+npx hardhat run scripts/deploy-notary.ts --network localhost
+
+# 3. Приложение
+cd blockchain_notary
+npm run dev
+```
+
+## Тесты контрактов
+
+```shell
+npx hardhat test
+```
+
+## Как это работает
+
+1. **Фиксация** — приложение вычисляет SHA-256 файла и отправляет хеш в контракт
+   `Notary`; on-chain сохраняются только хеш, адрес отправителя и момент времени.
+   Оригинал документа никогда не покидает off-chain хранилище.
+2. **Версионирование** — новые версии документа связываются в цепочку через
+   `previous_hash`; целостность цепочек проверяется в приложении.
+3. **Аудит** — для каждого артефакта сверяются локальный файл, запись в локальном
+   реестре (SQLite) и запись on-chain. Возможные статусы: `ON_CHAIN_OK`,
+   `LOCAL_ONLY`, `MISSING_FILE`, `HASH_MISMATCH`, `ON_CHAIN_MISSING`.

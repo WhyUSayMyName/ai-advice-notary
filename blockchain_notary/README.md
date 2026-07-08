@@ -1,30 +1,45 @@
-# React + TypeScript + Vite
+# Blockchain Notary — десктоп-приложение
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Electron + React + Vite приложение системы доказуемой фиксации неизменности
+цифровых данных. Общее описание проекта — в [корневом README](../README.md).
 
-Currently, two official plugins are available:
+## Возможности
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- вычисление SHA-256 файлов и регистрация артефактов в локальном реестре (SQLite);
+- нотаризация: фиксация хеша в смарт-контракте `Notary`;
+- версионирование документов с цепочкой `previous_hash` и проверкой её целостности;
+- аудит: сверка файлов, локального реестра и on-chain записей;
+- генерация PDF-сертификатов нотаризации.
 
-## Expanding the ESLint configuration
+## Настройка
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+Создайте `.env` по образцу `.env.example`:
 
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+```shell
+cp .env.example .env
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+## Запуск
+
+```shell
+# Всё сразу: hardhat node + деплой контракта + приложение
+npm run dev:all
+
+# Только приложение (узел и контракт уже запущены)
+npm run dev
+```
+
+## Структура
+
+| Путь | Назначение |
+|---|---|
+| `electron/` | main- и preload-скрипты Electron |
+| `src/main/` | логика main-процесса: хеширование, БД, блокчейн, аудит, сертификаты |
+| `src/App.tsx` | интерфейс (renderer) |
+| `scripts/dev-all.mjs` | оркестрация dev-окружения |
+
+## Сборка
+
+```shell
+npm run build
+```

@@ -7,14 +7,20 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies & build
 node_modules/
 dist/
 dist-electron/
 release/
+
+# Local databases
 *.db
 *.sqlite
 *.sqlite3
+
+# Env
 .env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -25,11 +31,3 @@ release/
 *.njsproj
 *.sln
 *.sw?
-node_modules/
-dist/
-dist-electron/
-release/
-*.db
-*.sqlite
-*.sqlite3
-.env
