@@ -1,12 +1,75 @@
 # AI Advice Notary
 
-Система доказуемой фиксации неизменности цифровых данных: документы хранятся off-chain,
-а их криптографические хеши (SHA-256) фиксируются в блокчейне как независимый «якорь доверия».
-Это позволяет внешнему аудитору постфактум обнаружить подмену или уничтожение документа,
-не доверяя оператору системы хранения.
+**Provable integrity for digital documents and AI-generated advice.**
 
-Система **обнаруживает** нарушения, но не предотвращает их — границы применимости
-и модель угроз описаны в проектной документации.
+Documents stay off-chain with their owner; only a SHA-256 hash is anchored
+on-chain as an independent source of trust. An external auditor can later
+*prove* that a document was tampered with or destroyed — without trusting
+the operator of the storage system.
+
+The system **detects** tampering post factum; it does not prevent it.
+The threat model, applicability boundaries and experiment plan are formalized
+in the project's research documentation.
+
+## Why
+
+- **AI accountability.** When advice from an LLM leads to consequences, there is
+  no reliable way to establish what exactly the model said and what was altered
+  afterwards. Anchoring dialog hashes makes the developer-vs-model responsibility
+  boundary technically verifiable.
+- **Conflict of interest.** Safety logs, technical documentation and reports are
+  stored by the same organization that may be interested in rewriting them before
+  an external audit. Classic backups and signatures don't help — keys and logs
+  belong to the same operator.
+
+## What works today
+
+- Desktop app (Electron + React): file hashing, local registry (SQLite),
+  document versioning with integrity-checked `previous_hash` chains,
+  five-status audit, PDF certificates.
+- `Notary` smart contract (Solidity, Hardhat) — an append-only hash registry.
+- 23 automated tests (6 contract + 17 unit). See [ROADMAP.md](ROADMAP.md) for
+  what's next, including a standalone CLI verifier for auditors.
+
+## Repository layout
+
+| Path | Purpose |
+|---|---|
+| `contracts/` | Solidity registry contract |
+| `scripts/` | Hardhat deploy scripts |
+| `test/` | Contract tests |
+| `blockchain_notary/` | Electron + React desktop app |
+
+## Quick start
+
+```shell
+npm install
+cd blockchain_notary && npm install
+
+# one command: local hardhat node + contract deploy + app
+npm run dev:all
+```
+
+Before the first run, create `blockchain_notary/.env` from
+[`.env.example`](blockchain_notary/.env.example) (set `NOTARY_PK` to Account #0
+key printed by `npx hardhat node`).
+
+Tests: `npx hardhat test` (contracts), `npm test` in `blockchain_notary/` (app).
+
+License: [MIT](LICENSE).
+
+---
+
+# AI Advice Notary (RU)
+
+Система доказуемой фиксации неизменности цифровых данных: документы хранятся
+off-chain, а их криптографические хеши (SHA-256) фиксируются в блокчейне как
+независимый «якорь доверия». Это позволяет внешнему аудитору постфактум
+обнаружить подмену или уничтожение документа, не доверяя оператору системы
+хранения.
+
+Система **обнаруживает** нарушения, но не предотвращает их — границы
+применимости и модель угроз описаны в проектной документации.
 
 ## Состав репозитория
 
@@ -58,10 +121,12 @@ cd blockchain_notary
 npm run dev
 ```
 
-## Тесты контрактов
+## Тесты
 
 ```shell
-npx hardhat test
+npx hardhat test          # контракты
+cd blockchain_notary
+npm test                  # приложение (vitest)
 ```
 
 ## Как это работает
@@ -74,3 +139,5 @@ npx hardhat test
 3. **Аудит** — для каждого артефакта сверяются локальный файл, запись в локальном
    реестре (SQLite) и запись on-chain. Возможные статусы: `ON_CHAIN_OK`,
    `LOCAL_ONLY`, `MISSING_FILE`, `HASH_MISMATCH`, `ON_CHAIN_MISSING`.
+
+Дорожная карта: [ROADMAP.md](ROADMAP.md). Лицензия: [MIT](LICENSE).
