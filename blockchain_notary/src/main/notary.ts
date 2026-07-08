@@ -1,12 +1,8 @@
 import "dotenv/config";
 import { JsonRpcProvider, Wallet, Contract } from "ethers";
 
-const NOTARY_ABI = [
-  "function notarize(bytes32 hash)",
-  "function isNotarized(bytes32 hash) view returns (bool)",
-  "function getRecord(bytes32 hash) view returns (address author, uint256 timestamp, bool exists)",
-  "event Notarized(bytes32 indexed hash, address indexed author, uint256 timestamp)",
-];
+// Единый источник ABI: экспортируется из hardhat-артефакта скриптом scripts/deploy-notary.ts
+import NOTARY_ABI from "./abi/Notary.json";
 
 function mustEnv(name: string): string {
   const v = process.env[name];
