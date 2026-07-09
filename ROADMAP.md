@@ -13,13 +13,16 @@ system for provable integrity of digital documents and AI-generated advice.
   handling instead of silent `INSERT OR IGNORE`, transactional version creation,
   17 unit tests (vitest).
 
+- **Phase 3 — Independent verifier (key milestone).**
+  Standalone CLI (`verifier-cli/`): single readable file, one dependency,
+  no Electron, no SQLite. Verifies individual files or an evidence bundle
+  (`notary-evidence/v1`) exported from the app; distinguishes TAMPERED /
+  MISSING_FILE / NOT_ON_CHAIN / LOCAL_ONLY / OK_HISTORICAL. End-to-end
+  acceptance: a single flipped byte in a notarized document is detected
+  without access to the operator's database.
+
 ## Next
 
-- **Phase 3 — Independent verifier (key milestone).**
-  Standalone open-source CLI: file + contract address + RPC URL → verdict.
-  No Electron, no SQLite — an external auditor must be able to verify integrity
-  *without trusting the operator's software*. Plus an "evidence bundle" export
-  (hashes, tx ids, contract address, verification instructions).
 - **Phase 4 — Anchor service.**
   Persistent notarization queue with retries, crash recovery
   (reconcile `sent` records against the chain on startup), sequential worker.
@@ -47,10 +50,12 @@ system for provable integrity of digital documents and AI-generated advice.
 
 **Сделано:** этап 0 — гигиена репозитория; этап 1 — единый контракт `Notary`
 с тестами и единым источником ABI; этап 2 — надёжный слой данных
-(уникальность в рамках артефакта, миграция, явные конфликты, 17 юнит-тестов).
+(уникальность в рамках артефакта, миграция, явные конфликты, юнит-тесты);
+этап 3 — независимый CLI-верификатор (`verifier-cli/`) и экспорт «пакета
+доказательств» из приложения: аудитор проверяет целостность документов,
+не доверяя софту оператора.
 
-**Дальше:** этап 3 — независимый CLI-верификатор и «пакет доказательств»
-для аудитора (ключевой для модели доверия); этап 4 — anchor-сервис с очередью
+**Дальше:** этап 4 — anchor-сервис с очередью
 и ретраями; этап 5 — Merkle-батчинг, testnet, экспериментальная оценка
 (стоимость/латентность/пропускная способность); этап 6 — управление ключами,
 CI, редизайн UI.

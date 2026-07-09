@@ -11,6 +11,7 @@ import {
   notaryNotarize,
 } from "../src/main/notary"
 import { generateCertificatePdf } from "../src/main/certificate"
+import { exportEvidenceBundle } from "../src/main/evidence"
 
 import "dotenv/config"
 import { JsonRpcProvider } from "ethers"
@@ -136,6 +137,27 @@ ipcMain.handle(
     }
   }
 )
+
+ipcMain.handle("evidence:export", async (_e, rpcUrl?: string) => {
+  try {
+    const bundle = await exportEvidenceBundle(rpcUrl)
+
+    const save = await dialog.showSaveDialog({
+      title: "Экспорт пакета доказательств",
+      defaultPath: `evidence_${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    })
+
+    if (save.canceled || !save.filePath) return { ok: false, canceled: true }
+
+    const { writeFile } = await import("node:fs/promises")
+    await writeFile(save.filePath, JSON.stringify(bundle, null, 2) + "\n", "utf8")
+
+    return { ok: true, filePath: save.filePath, artifacts: bundle.artifacts.length }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
 
 function createWindow() {
   win = new BrowserWindow({

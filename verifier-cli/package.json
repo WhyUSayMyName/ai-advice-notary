@@ -1,0 +1,16 @@
+{
+  "name": "notary-verify",
+  "version": "0.1.0",
+  "description": "Independent verifier for AI Advice Notary: recomputes file hashes and checks them against the on-chain registry. No trust in the operator's software required.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "notary-verify": "./verify.mjs"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "ethers": "^6.16.0"
+  }
+}

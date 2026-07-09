@@ -211,6 +211,14 @@ type VersionChainReport = {
         error?: string
       }>
 
+      exportEvidence: (rpcUrl?: string) => Promise<{
+        ok: boolean
+        filePath?: string
+        artifacts?: number
+        canceled?: boolean
+        error?: string
+      }>
+
       saveCertificatePdf: (payload: {
         filePath: string
         hashHex: string

@@ -280,6 +280,20 @@ export default function App() {
     await refreshAll()
   }
 
+  const exportEvidence = async () => {
+    log("Экспорт пакета доказательств…")
+    const res = await window.api.exportEvidence(rpcUrl)
+
+    if (res.ok) {
+      log(`Пакет доказательств сохранён: ${res.filePath} (записей: ${res.artifacts})`)
+      log("Передайте аудитору: этот JSON + документы + verifier-cli из репозитория")
+    } else if (res.canceled) {
+      log("Экспорт отменён")
+    } else {
+      log(`Ошибка экспорта: ${res.error}`)
+    }
+  }
+
   const savePdf = async () => {
     if (!filePath || !hashHex || !record || !txHash) {
       log("Для PDF нужны: файл, hash, record (author/timestamp) и txHash")
@@ -630,6 +644,12 @@ export default function App() {
                   className="rounded-xl border px-4 py-2 text-sm"
                 >
                   Check Chains
+                </button>
+                <button
+                  onClick={exportEvidence}
+                  className="rounded-xl border px-4 py-2 text-sm"
+                >
+                  Экспорт доказательств
                 </button>
               </div>
             </div>

@@ -26,10 +26,14 @@ in the project's research documentation.
 
 - Desktop app (Electron + React): file hashing, local registry (SQLite),
   document versioning with integrity-checked `previous_hash` chains,
-  five-status audit, PDF certificates.
+  five-status audit, PDF certificates, evidence bundle export for auditors.
 - `Notary` smart contract (Solidity, Hardhat) — an append-only hash registry.
-- 23 automated tests (6 contract + 17 unit). See [ROADMAP.md](ROADMAP.md) for
-  what's next, including a standalone CLI verifier for auditors.
+- **Independent CLI verifier** ([verifier-cli/](verifier-cli/README.md)):
+  a single readable file with one dependency that lets an auditor verify
+  documents *without trusting the operator's software* — the key piece of
+  the trust model.
+- 26 automated tests (6 contract + 20 unit). See [ROADMAP.md](ROADMAP.md) for
+  what's next.
 
 ## Repository layout
 
@@ -39,6 +43,7 @@ in the project's research documentation.
 | `scripts/` | Hardhat deploy scripts |
 | `test/` | Contract tests |
 | `blockchain_notary/` | Electron + React desktop app |
+| `verifier-cli/` | Independent auditor's verifier (Node.js CLI) |
 
 ## Quick start
 
@@ -78,7 +83,8 @@ off-chain, а их криптографические хеши (SHA-256) фик�
 | `contracts/` | Смарт-контракты реестра фиксации (Solidity) |
 | `scripts/` | Скрипты деплоя контрактов (Hardhat) |
 | `test/` | Тесты контрактов |
-| `blockchain_notary/` | Десктоп-приложение (Electron + React): хеширование, реестр артефактов, версии, аудит, PDF-сертификаты |
+| `blockchain_notary/` | Десктоп-приложение (Electron + React): хеширование, реестр артефактов, версии, аудит, PDF-сертификаты, экспорт пакета доказательств |
+| `verifier-cli/` | Независимый верификатор для аудитора (Node.js CLI) |
 
 ## Требования
 
