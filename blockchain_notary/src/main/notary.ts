@@ -54,6 +54,24 @@ export async function notarySendNotarize(hashHex: string, rpcUrl?: string) {
   }
 }
 
+/** Пакетная фиксация: якорит корень дерева Меркла (см. merkle-core.ts). */
+export async function notarySendAnchorRoot(
+  rootHex: string,
+  leafCount: number,
+  rpcUrl?: string
+) {
+  const c = contractFor(rpcUrl)
+  const tx = await c.anchorRoot(rootHex, leafCount)
+
+  return {
+    txHash: tx.hash as string,
+    wait: async () => {
+      const receipt = await tx.wait()
+      return { blockNumber: (receipt?.blockNumber ?? null) as number | null }
+    },
+  }
+}
+
 export async function notaryNotarize(hashHex: string, rpcUrl?: string) {
   try {
     const c = contractFor(rpcUrl);

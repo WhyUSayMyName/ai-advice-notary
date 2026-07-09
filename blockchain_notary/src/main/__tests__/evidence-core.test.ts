@@ -29,7 +29,7 @@ describe("evidence-core", () => {
       rpcUrl: "http://127.0.0.1:8545",
     })
 
-    expect(bundle.format).toBe("notary-evidence/v1")
+    expect(bundle.format).toBe("notary-evidence/v2")
     expect(bundle.chain).toEqual({
       chain_id: 31337,
       contract: "0xCONTRACT",
@@ -64,5 +64,36 @@ describe("evidence-core", () => {
     expect(bundle.chain.chain_id).toBeNull()
     expect(bundle.chain.rpc_url_hint).toBeNull()
     expect(bundle.artifacts).toEqual([])
+  })
+
+  it("артефакт из merkle-пакета получает batch-блок с валидным proof", async () => {
+    const { buildMerkleTree, verifyMerkleProof } = await import("../merkle-core")
+    const members = [H(1), H(2), H(3)]
+    const root = buildMerkleTree(members).root
+
+    const bundle = buildEvidenceBundle(
+      [rec({ hash: H(2), notarized: 1, blockchain_tx: "0xBATCH_TX" })],
+      { contract: "0xC", chainId: 31337 },
+      {
+        batchFor: (hash) =>
+          hash === H(2)
+            ? { root, tx_hash: "0xBATCH_TX", leaf_count: 3, created_at: 1, members }
+            : undefined,
+      }
+    )
+
+    const entry = bundle.artifacts[0]
+    expect(entry.batch).toBeDefined()
+    expect(entry.batch!.root).toBe(root)
+    expect(entry.batch!.tx).toBe("0xBATCH_TX")
+    expect(verifyMerkleProof(H(2), entry.batch!.proof, root)).toBe(true)
+  })
+
+  it("без batchFor batch-блок отсутствует", () => {
+    const bundle = buildEvidenceBundle([rec({ notarized: 1 })], {
+      contract: "0xC",
+      chainId: null,
+    })
+    expect(bundle.artifacts[0].batch).toBeUndefined()
   })
 })

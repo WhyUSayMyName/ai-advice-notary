@@ -1,4 +1,5 @@
 import type { AnchorQueueItem, NotaryDatabase } from "./database-core"
+import { buildMerkleTree } from "./merkle-core"
 
 /**
  * Адаптер взаимодействия с чейном. Выделен в интерфейс, чтобы сервис
@@ -9,6 +10,11 @@ export type ChainAdapter = {
   isNotarized(hash: string, rpcUrl?: string): Promise<boolean>
   sendNotarize(
     hash: string,
+    rpcUrl?: string
+  ): Promise<{ txHash: string; wait: () => Promise<{ blockNumber: number | null }> }>
+  sendAnchorRoot(
+    root: string,
+    leafCount: number,
     rpcUrl?: string
   ): Promise<{ txHash: string; wait: () => Promise<{ blockNumber: number | null }> }>
 }
@@ -27,6 +33,8 @@ export type AnchorServiceOptions = {
   backoffMaxMs?: number
   /** Пауза цикла при пустой очереди, мс (по умолчанию 15000). */
   idleMs?: number
+  /** Максимум документов в одном merkle-пакете (по умолчанию 256). */
+  maxBatchSize?: number
   /** Часы — подменяются в тестах. */
   now?: () => number
 }
@@ -46,6 +54,7 @@ export class AnchorService {
   private readonly backoffBaseMs: number
   private readonly backoffMaxMs: number
   private readonly idleMs: number
+  private readonly maxBatchSize: number
   private readonly now: () => number
 
   private running = false
@@ -62,6 +71,7 @@ export class AnchorService {
     this.backoffBaseMs = options.backoffBaseMs ?? 5_000
     this.backoffMaxMs = options.backoffMaxMs ?? 5 * 60_000
     this.idleMs = options.idleMs ?? 15_000
+    this.maxBatchSize = options.maxBatchSize ?? 256
     this.now = options.now ?? Date.now
   }
 
@@ -86,11 +96,11 @@ export class AnchorService {
 
     for (const item of this.db.getUnconfirmedAnchors()) {
       try {
-        const onChain = await this.chain.isNotarized(item.hash, item.rpc_url ?? undefined)
+        const anchored = await this.findAnchoredEvidence(item)
 
-        if (onChain) {
-          this.db.markAnchorConfirmed(item.id, item.tx_hash)
-          this.onConfirmed(item.hash, item.tx_hash)
+        if (anchored) {
+          this.db.markAnchorConfirmed(item.id, anchored.txHash ?? item.tx_hash)
+          this.onConfirmed(item.hash, anchored.txHash ?? item.tx_hash)
           confirmed++
           this.emit({ type: "recovered", item: this.db.getAnchorByHash(item.hash)! })
         } else if (item.status === "sent") {
@@ -107,24 +117,67 @@ export class AnchorService {
   }
 
   /**
-   * Обрабатывает одну запись очереди. Вынесено из цикла, чтобы тесты
-   * могли шагать по очереди без таймеров и реального времени.
+   * Проверяет, заякорен ли хеш on-chain: напрямую (одиночная фиксация)
+   * или через корень merkle-пакета, в который он входил.
+   */
+  private async findAnchoredEvidence(
+    item: AnchorQueueItem
+  ): Promise<{ txHash: string | null } | null> {
+    const rpcUrl = item.rpc_url ?? undefined
+
+    if (await this.chain.isNotarized(item.hash, rpcUrl)) {
+      return { txHash: item.tx_hash }
+    }
+
+    for (const batch of this.db.getAnchorBatchesForHash(item.hash)) {
+      if (await this.chain.isNotarized(batch.root, rpcUrl)) {
+        return { txHash: batch.tx_hash }
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Обрабатывает созревшие записи очереди: одиночную — прямой фиксацией,
+   * несколько — merkle-пакетом одной транзакцией. Вынесено из цикла,
+   * чтобы тесты могли шагать по очереди без таймеров и реального времени.
    */
   async processNext(): Promise<ProcessResult> {
-    const item = this.db.getDueAnchor(this.now())
+    const due = this.db.getDueAnchors(this.now(), this.maxBatchSize)
 
-    if (!item) {
+    if (due.length === 0) {
       return this.db.getNextAnchorAttemptAt() !== undefined ? "waiting" : "empty"
     }
 
-    try {
-      if (await this.chain.isNotarized(item.hash, item.rpc_url ?? undefined)) {
-        this.db.markAnchorConfirmed(item.id, item.tx_hash)
-        this.onConfirmed(item.hash, item.tx_hash)
-        this.emit({ type: "confirmed", item: this.db.getAnchorByHash(item.hash)! })
-        return "processed"
+    // Уже заякоренные (напрямую или через пакет) подтверждаются без отправки
+    const remaining: AnchorQueueItem[] = []
+    for (const item of due) {
+      try {
+        const anchored = await this.findAnchoredEvidence(item)
+        if (anchored) {
+          this.db.markAnchorConfirmed(item.id, anchored.txHash ?? item.tx_hash)
+          this.onConfirmed(item.hash, anchored.txHash ?? item.tx_hash)
+          this.emit({ type: "confirmed", item: this.db.getAnchorByHash(item.hash)! })
+        } else {
+          remaining.push(item)
+        }
+      } catch (e) {
+        this.rescheduleAfterError(item, e)
       }
+    }
 
+    if (remaining.length === 1) {
+      await this.processSingle(remaining[0])
+    } else if (remaining.length > 1) {
+      await this.processBatch(remaining)
+    }
+
+    return "processed"
+  }
+
+  private async processSingle(item: AnchorQueueItem) {
+    try {
       const { txHash, wait } = await this.chain.sendNotarize(
         item.hash,
         item.rpc_url ?? undefined
@@ -138,23 +191,76 @@ export class AnchorService {
       this.onConfirmed(item.hash, txHash)
       this.emit({ type: "confirmed", item: this.db.getAnchorByHash(item.hash)! })
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
-      const attempts = item.attempts + 1
+      this.rescheduleAfterError(item, e)
+    }
+  }
 
-      if (attempts >= this.maxAttempts) {
-        this.db.markAnchorFailed(item.id, attempts, message)
-        this.emit({ type: "failed", item: this.db.getAnchorByHash(item.hash)! })
-      } else {
-        const backoff = Math.min(
-          this.backoffBaseMs * 2 ** (attempts - 1),
-          this.backoffMaxMs
-        )
-        this.db.rescheduleAnchor(item.id, attempts, this.now() + backoff, message)
-        this.emit({ type: "retry", item: this.db.getAnchorByHash(item.hash)! })
+  private async processBatch(items: AnchorQueueItem[]) {
+    const tree = buildMerkleTree(items.map((i) => i.hash))
+    const rpcUrl = items[0].rpc_url ?? undefined
+
+    // Состав пакета фиксируется до отправки: если приложение упадёт
+    // после сабмита транзакции, recovery восстановит связь hash → root
+    this.db.createAnchorBatch(tree.root, items.map((i) => i.hash))
+
+    let txHash: string
+    let wait: () => Promise<{ blockNumber: number | null }>
+    try {
+      const existing = this.db.getAnchorBatch(tree.root)
+      if (existing?.tx_hash && (await this.chain.isNotarized(tree.root, rpcUrl))) {
+        // Тот же состав уже заякорен предыдущей попыткой
+        this.confirmBatchItems(items, existing.tx_hash)
+        return
       }
+
+      const sent = await this.chain.sendAnchorRoot(tree.root, tree.leafCount, rpcUrl)
+      txHash = sent.txHash
+      wait = sent.wait
+    } catch (e) {
+      // Транзакция не ушла — пакет откатывается, записи ждут следующей попытки
+      this.db.deleteAnchorBatch(tree.root)
+      for (const item of items) this.rescheduleAfterError(item, e)
+      return
     }
 
-    return "processed"
+    this.db.setAnchorBatchTx(tree.root, txHash)
+    for (const item of items) {
+      this.db.markAnchorSent(item.id, txHash)
+      this.emit({ type: "sent", item: this.db.getAnchorByHash(item.hash)! })
+    }
+
+    try {
+      await wait()
+    } catch (e) {
+      // Транзакция ушла, но подтверждение оборвалось: состав пакета сохранён,
+      // следующая попытка (или recovery) увидит root on-chain и подтвердит
+      for (const item of items) this.rescheduleAfterError(item, e)
+      return
+    }
+
+    this.confirmBatchItems(items, txHash)
+  }
+
+  private confirmBatchItems(items: AnchorQueueItem[], txHash: string) {
+    for (const item of items) {
+      this.db.markAnchorConfirmed(item.id, txHash)
+      this.onConfirmed(item.hash, txHash)
+      this.emit({ type: "confirmed", item: this.db.getAnchorByHash(item.hash)! })
+    }
+  }
+
+  private rescheduleAfterError(item: AnchorQueueItem, e: unknown) {
+    const message = e instanceof Error ? e.message : String(e)
+    const attempts = item.attempts + 1
+
+    if (attempts >= this.maxAttempts) {
+      this.db.markAnchorFailed(item.id, attempts, message)
+      this.emit({ type: "failed", item: this.db.getAnchorByHash(item.hash)! })
+    } else {
+      const backoff = Math.min(this.backoffBaseMs * 2 ** (attempts - 1), this.backoffMaxMs)
+      this.db.rescheduleAnchor(item.id, attempts, this.now() + backoff, message)
+      this.emit({ type: "retry", item: this.db.getAnchorByHash(item.hash)! })
+    }
   }
 
   /** Запускает фоновый цикл обработки. */

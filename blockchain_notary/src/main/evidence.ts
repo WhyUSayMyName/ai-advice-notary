@@ -1,6 +1,6 @@
 import "dotenv/config"
 import { JsonRpcProvider } from "ethers"
-import { getArtifacts } from "./database"
+import { getArtifacts, getDatabase } from "./database"
 import { buildEvidenceBundle, type EvidenceBundle } from "./evidence-core"
 
 export async function exportEvidenceBundle(rpcUrl?: string): Promise<EvidenceBundle> {
@@ -19,5 +19,15 @@ export async function exportEvidenceBundle(rpcUrl?: string): Promise<EvidenceBun
     }
   }
 
-  return buildEvidenceBundle(getArtifacts(), { contract, chainId, rpcUrl })
+  return buildEvidenceBundle(
+    getArtifacts(),
+    { contract, chainId, rpcUrl },
+    {
+      // Свежайший пакет с известной транзакцией — именно он заякорен on-chain
+      batchFor: (hash) =>
+        getDatabase()
+          .getAnchorBatchesForHash(hash)
+          .find((b) => b.tx_hash !== null),
+    }
+  )
 }

@@ -2,7 +2,7 @@ import { access } from "node:fs/promises"
 import { constants } from "node:fs"
 import { sha256FileHex } from "./filehash"
 import { getArtifacts } from "./database"
-import { notaryGetRecord } from "./notary"
+import { resolveAnchoredRecord } from "./artifacts"
 
 export type AuditStatus =
   | "LOCAL_ONLY"
@@ -88,7 +88,8 @@ export async function auditArtifacts(): Promise<AuditResult[]> {
       continue
     }
 
-    const record = await notaryGetRecord(a.hash)
+    // Batch-aware: фиксация могла быть одиночной или через корень merkle-пакета
+    const record = await resolveAnchoredRecord(a.hash)
 
     if (!record.exists) {
       results.push({

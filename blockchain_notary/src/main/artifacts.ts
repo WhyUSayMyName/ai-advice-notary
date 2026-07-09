@@ -5,6 +5,7 @@ import {
   getArtifactByHash,
   getArtifactsGroupedLatest,
   getArtifactHistory,
+  getDatabase,
   getLatestArtifactVersion,
   upsertArtifact,
 } from "./database"
@@ -127,9 +128,35 @@ export async function notarizeArtifactVersion(
   }
 }
 
+/**
+ * Ищет on-chain запись для хеша: сначала прямую (одиночная фиксация),
+ * затем через корни merkle-пакетов, в которые хеш входил.
+ */
+export async function resolveAnchoredRecord(hash: string, rpcUrl?: string) {
+  const direct = await notaryGetRecord(hash, rpcUrl)
+  if (direct.exists) {
+    return { ...direct, via: "direct" as const, root: null as string | null }
+  }
+
+  for (const batch of getDatabase().getAnchorBatchesForHash(hash)) {
+    const viaRoot = await notaryGetRecord(batch.root, rpcUrl)
+    if (viaRoot.exists) {
+      return { ...viaRoot, via: "batch" as const, root: batch.root }
+    }
+  }
+
+  return {
+    exists: false,
+    author: "",
+    timestamp: 0,
+    via: "none" as const,
+    root: null as string | null,
+  }
+}
+
 export async function verifyArtifact(filePath: string, rpcUrl?: string) {
   const hash = await sha256FileHex(filePath)
-  const record = await notaryGetRecord(hash, rpcUrl)
+  const record = await resolveAnchoredRecord(hash, rpcUrl)
   const localRecord = getArtifactByHash(hash)
 
   return {
@@ -137,6 +164,8 @@ export async function verifyArtifact(filePath: string, rpcUrl?: string) {
     existsOnChain: record.exists,
     author: record.author,
     timestamp: record.timestamp,
+    via: record.via,
+    root: record.root,
     localRecord,
   }
 }

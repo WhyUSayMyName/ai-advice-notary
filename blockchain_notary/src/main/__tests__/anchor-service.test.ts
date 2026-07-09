@@ -9,6 +9,24 @@ function makeFakeChain() {
   const onChain = new Set<string>()
   let failSends = 0
   let failWaits = 0
+  let sentTxCount = 0
+  const anchoredRoots: Array<{ root: string; leafCount: number }> = []
+
+  const makeTx = (target: string) => {
+    sentTxCount++
+    const txHash = "0xTX_" + target.slice(-4)
+    return {
+      txHash,
+      wait: async () => {
+        if (failWaits > 0) {
+          failWaits--
+          throw new Error("node died while waiting")
+        }
+        onChain.add(target)
+        return { blockNumber: 1 }
+      },
+    }
+  }
 
   const chain: ChainAdapter = {
     async isNotarized(hash) {
@@ -19,24 +37,23 @@ function makeFakeChain() {
         failSends--
         throw new Error("RPC unreachable")
       }
-      const txHash = "0xTX_" + hash.slice(-4)
-      return {
-        txHash,
-        wait: async () => {
-          if (failWaits > 0) {
-            failWaits--
-            throw new Error("node died while waiting")
-          }
-          onChain.add(hash)
-          return { blockNumber: 1 }
-        },
+      return makeTx(hash)
+    },
+    async sendAnchorRoot(root, leafCount) {
+      if (failSends > 0) {
+        failSends--
+        throw new Error("RPC unreachable")
       }
+      anchoredRoots.push({ root, leafCount })
+      return makeTx(root)
     },
   }
 
   return {
     chain,
     onChain,
+    anchoredRoots,
+    txCount: () => sentTxCount,
     setFailSends: (n: number) => (failSends = n),
     setFailWaits: (n: number) => (failWaits = n),
   }
@@ -208,12 +225,83 @@ describe("anchor-service", () => {
     expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
   })
 
+  it("батч: несколько due-записей фиксируются одной транзакцией anchorRoot", async () => {
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+    service.enqueue(H(3))
+
+    expect(await service.processNext()).toBe("processed")
+
+    // одна транзакция на три документа
+    expect(fake.txCount()).toBe(1)
+    expect(fake.anchoredRoots).toHaveLength(1)
+    expect(fake.anchoredRoots[0].leafCount).toBe(3)
+
+    for (const h of [H(1), H(2), H(3)]) {
+      const item = db.getAnchorByHash(h)!
+      expect(item.status).toBe("confirmed")
+      expect(item.tx_hash).toBe(db.getAnchorByHash(H(1))!.tx_hash)
+    }
+
+    // состав пакета сохранён и связан с транзакцией
+    const batch = db.getAnchorBatchesForHash(H(2))[0]
+    expect(batch.members).toEqual([H(1), H(2), H(3)].sort())
+    expect(batch.tx_hash).toBe(db.getAnchorByHash(H(1))!.tx_hash)
+    expect(confirmed).toHaveLength(3)
+  })
+
+  it("батч: отказ до отправки откатывает пакет и переносит все записи", async () => {
+    fake.setFailSends(1)
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+
+    await service.processNext()
+
+    expect(db.getAnchorByHash(H(1))!.status).toBe("pending")
+    expect(db.getAnchorByHash(H(2))!.status).toBe("pending")
+    // пакет откатился — состав не должен засорять recovery
+    expect(db.getAnchorBatchesForHash(H(1))).toHaveLength(0)
+
+    // следующая попытка успешна
+    clock.now += 10_000
+    await service.processNext()
+    expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
+    expect(db.getAnchorByHash(H(2))!.status).toBe("confirmed")
+  })
+
+  it("батч: обрыв ожидания сохраняет состав, recovery подтверждает через root", async () => {
+    fake.setFailWaits(1)
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+
+    // отправка прошла (root попал в fake.anchoredRoots), ожидание оборвалось
+    await service.processNext()
+    expect(db.getAnchorByHash(H(1))!.status).toBe("pending")
+    expect(db.getAnchorBatchesForHash(H(1))).toHaveLength(1)
+
+    // «транзакция всё-таки замайнилась, пока приложение лежало»
+    fake.onChain.add(fake.anchoredRoots[0].root)
+
+    const result = await service.recover()
+    expect(result.confirmed).toBe(2)
+    expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
+    expect(db.getAnchorByHash(H(2))!.status).toBe("confirmed")
+    // повторной транзакции не было
+    expect(fake.txCount()).toBe(1)
+  })
+
   it("recovery при недоступном узле не роняет сервис и не трогает записи", async () => {
     const brokenChain: ChainAdapter = {
       isNotarized: async () => {
         throw new Error("ECONNREFUSED")
       },
       sendNotarize: async () => {
+        throw new Error("ECONNREFUSED")
+      },
+      sendAnchorRoot: async () => {
         throw new Error("ECONNREFUSED")
       },
     }

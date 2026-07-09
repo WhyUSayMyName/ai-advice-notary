@@ -67,4 +67,41 @@ describe("Notary", function () {
     expect(author).to.eq(ethers.ZeroAddress);
     expect(timestamp).to.eq(0n);
   });
+
+  describe("anchorRoot", function () {
+    const sampleRoot = ethers.keccak256(ethers.toUtf8Bytes("merkle-root"));
+
+    it("anchors a root readable via getRecord/isNotarized", async function () {
+      const { notary, user } = await loadFixture(deployNotary);
+
+      await notary.anchorRoot(sampleRoot, 100);
+
+      expect(await notary.isNotarized(sampleRoot)).to.eq(true);
+      const [author, , exists] = await notary.getRecord(sampleRoot);
+      expect(exists).to.eq(true);
+      expect(author).to.eq(user.address);
+    });
+
+    it("emits RootAnchored with leaf count", async function () {
+      const { notary, user } = await loadFixture(deployNotary);
+
+      await expect(notary.anchorRoot(sampleRoot, 42))
+        .to.emit(notary, "RootAnchored")
+        .withArgs(sampleRoot, user.address, anyUint, 42);
+    });
+
+    it("rejects duplicate root, also across notarize/anchorRoot", async function () {
+      const { notary } = await loadFixture(deployNotary);
+
+      await notary.anchorRoot(sampleRoot, 2);
+      await expect(notary.anchorRoot(sampleRoot, 2)).to.be.revertedWith("Already notarized");
+      await expect(notary.notarize(sampleRoot)).to.be.revertedWith("Already notarized");
+    });
+
+    it("rejects the zero root", async function () {
+      const { notary } = await loadFixture(deployNotary);
+
+      await expect(notary.anchorRoot(ethers.ZeroHash, 1)).to.be.revertedWith("Empty hash");
+    });
+  });
 });

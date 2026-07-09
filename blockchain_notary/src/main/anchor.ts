@@ -1,5 +1,5 @@
 import { getDatabase, markArtifactNotarized } from "./database"
-import { notaryIsNotarized, notarySendNotarize } from "./notary"
+import { notaryIsNotarized, notarySendAnchorRoot, notarySendNotarize } from "./notary"
 import { AnchorService, type AnchorEvent } from "./anchor-service"
 
 let service: AnchorService | null = null
@@ -18,6 +18,8 @@ export function getAnchorService(): AnchorService {
       {
         isNotarized: async (hash, rpcUrl) => (await notaryIsNotarized(hash, rpcUrl)).notarized,
         sendNotarize: (hash, rpcUrl) => notarySendNotarize(hash, rpcUrl),
+        sendAnchorRoot: (root, leafCount, rpcUrl) =>
+          notarySendAnchorRoot(root, leafCount, rpcUrl),
       },
       (hash, txHash) => markArtifactNotarized(hash, txHash ?? ""),
       (event) => {

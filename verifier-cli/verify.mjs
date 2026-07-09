@@ -44,9 +44,11 @@ Options:
 
 Verdicts:
   OK_ON_CHAIN      file hash matches the bundle and is anchored on-chain
+                   (directly or via a Merkle root for batched entries)
   NOTARIZED        (file mode) file hash is anchored on-chain
   NOT_FOUND        (file mode) file hash is NOT in the registry
   TAMPERED         file content differs from the hash recorded in the bundle
+  BAD_PROOF        batched entry: Merkle proof does not fold to the claimed root
   MISSING_FILE     bundle references a file that is not in --dir
   NOT_ON_CHAIN     hash matches the bundle but was never anchored on-chain
   LOCAL_ONLY       bundle marks this entry as not notarized (informational)
@@ -56,6 +58,26 @@ Verdicts:
 async function sha256FileHex(filePath) {
   const buf = await readFile(filePath)
   return "0x" + createHash("sha256").update(buf).digest("hex")
+}
+
+/*
+ * Merkle canon (must match the operator's implementation exactly):
+ *   leaf = SHA-256(0x00 || fileHash), node = SHA-256(0x01 || min(a,b) || max(a,b)).
+ * Sorted pairs mean the proof carries no left/right flags; domain prefixes
+ * prevent presenting an internal node as a leaf (second-preimage attack).
+ */
+const hexToBuf = (hex) => Buffer.from(hex.replace(/^0x/, ""), "hex")
+
+function foldMerkleProof(fileHashHex, proof) {
+  let acc = createHash("sha256")
+    .update(Buffer.concat([Buffer.from([0x00]), hexToBuf(fileHashHex)]))
+    .digest()
+  for (const siblingHex of proof) {
+    const sibling = hexToBuf(siblingHex)
+    const [lo, hi] = Buffer.compare(acc, sibling) <= 0 ? [acc, sibling] : [sibling, acc]
+    acc = createHash("sha256").update(Buffer.concat([Buffer.from([0x01]), lo, hi])).digest()
+  }
+  return "0x" + acc.toString("hex")
 }
 
 function makeGetRecord(rpcUrl, contractAddress) {
@@ -100,7 +122,7 @@ async function verifyFiles(files, getRecord) {
  * moved on), so only their on-chain anchoring is verified.
  */
 async function verifyBundle(bundle, dir, getRecord) {
-  if (bundle.format !== "notary-evidence/v1") {
+  if (!["notary-evidence/v1", "notary-evidence/v2"].includes(bundle.format)) {
     throw new Error(`Unsupported bundle format: ${bundle.format ?? "(missing)"}`)
   }
   const artifacts = bundle.artifacts ?? []
@@ -118,6 +140,7 @@ async function verifyBundle(bundle, dir, getRecord) {
       version: a.version,
       file: a.file_name,
       hash: a.hash,
+      ...(a.batch ? { root: a.batch.root } : {}),
     }
     const isLatest = latestVersion.get(a.artifact_id) === a.version
 
@@ -126,7 +149,19 @@ async function verifyBundle(bundle, dir, getRecord) {
       continue
     }
 
-    const record = await getRecord(a.hash)
+    // Batched entry: the anchor lives at the Merkle root; the proof must
+    // fold from the recorded hash exactly to that root.
+    let anchorTarget = a.hash
+    if (a.batch) {
+      const computedRoot = foldMerkleProof(a.hash, a.batch.proof ?? [])
+      if (computedRoot !== String(a.batch.root ?? "").toLowerCase()) {
+        results.push({ ...base, status: "BAD_PROOF", computed_root: computedRoot })
+        continue
+      }
+      anchorTarget = a.batch.root
+    }
+
+    const record = await getRecord(anchorTarget)
 
     if (!isLatest) {
       results.push(
@@ -163,7 +198,13 @@ async function verifyBundle(bundle, dir, getRecord) {
   return results
 }
 
-const PROBLEM_STATUSES = new Set(["TAMPERED", "MISSING_FILE", "NOT_ON_CHAIN", "NOT_FOUND"])
+const PROBLEM_STATUSES = new Set([
+  "TAMPERED",
+  "MISSING_FILE",
+  "NOT_ON_CHAIN",
+  "NOT_FOUND",
+  "BAD_PROOF",
+])
 
 function printHuman(results) {
   for (const r of results) {

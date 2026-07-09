@@ -35,7 +35,11 @@ in the project's research documentation.
 - **Anchor service**: persistent notarization queue with retries and crash
   recovery — a transaction mined while the app was down is confirmed on
   restart without creating an on-chain duplicate.
-- 37 automated tests (6 contract + 29 unit + 2 live e2e). See
+- **Merkle batching**: N pending documents are anchored by a single
+  `anchorRoot` transaction; the evidence bundle carries a per-document proof
+  and the CLI verifier folds it to the on-chain root (live e2e: 100 documents,
+  one transaction).
+- 60 automated tests (10 contract + 47 unit + 3 live e2e). See
   [ROADMAP.md](ROADMAP.md) for what's next.
 
 ## Repository layout

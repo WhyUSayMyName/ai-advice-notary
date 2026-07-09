@@ -184,6 +184,9 @@ type AnchorUpdateEvent = {
         existsOnChain?: boolean
         author?: string
         timestamp?: number
+        /** direct — одиночная фиксация, batch — через корень merkle-пакета */
+        via?: "direct" | "batch" | "none"
+        root?: string | null
         localRecord?: ArtifactRecord
         error?: string
       }>

@@ -37,11 +37,17 @@ node verify.mjs --bundle evidence.json --dir ./documents --rpc <url>
 
 Verdicts:
 
+Entries may be anchored individually or as part of a Merkle batch (bundle
+format `notary-evidence/v2`): the batch block carries the root and a proof,
+the verifier folds the proof from the file hash to the root and checks the
+root on-chain. One transaction anchors the whole batch.
+
 | Status | Meaning |
 |---|---|
-| `OK_ON_CHAIN` | file matches the bundle hash and is anchored on-chain |
+| `OK_ON_CHAIN` | file matches the bundle hash and is anchored on-chain (directly or via a Merkle root) |
 | `OK_HISTORICAL` | older version: its hash is anchored on-chain (file itself is not compared) |
 | `TAMPERED` | file content differs from the recorded hash; if the recorded hash *is* on-chain, notarized content was modified |
+| `BAD_PROOF` | batched entry: the Merkle proof does not fold to the claimed root |
 | `MISSING_FILE` | bundle references a file that is absent — possible destruction of evidence |
 | `NOT_ON_CHAIN` | bundle claims notarization but the registry has no such record |
 | `LOCAL_ONLY` | entry was never notarized (informational) |

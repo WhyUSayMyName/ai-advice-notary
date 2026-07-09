@@ -24,22 +24,24 @@ async function makeRealAdapter(): Promise<ChainAdapter> {
   const wallet = new Wallet(PK!, provider)
   const abi = [
     "function notarize(bytes32 hash)",
+    "function anchorRoot(bytes32 root, uint32 leafCount)",
     "function isNotarized(bytes32 hash) view returns (bool)",
   ]
   const contract = new Contract(NOTARY_ADDRESS!, abi, wallet)
 
+  const asSent = (tx: { hash: string; wait: () => Promise<{ blockNumber: number } | null> }) => ({
+    txHash: tx.hash,
+    wait: async () => {
+      const r = await tx.wait()
+      return { blockNumber: (r?.blockNumber ?? null) as number | null }
+    },
+  })
+
   return {
     isNotarized: async (hash) => Boolean(await contract.isNotarized(hash)),
-    sendNotarize: async (hash) => {
-      const tx = await contract.notarize(hash)
-      return {
-        txHash: tx.hash as string,
-        wait: async () => {
-          const r = await tx.wait()
-          return { blockNumber: (r?.blockNumber ?? null) as number | null }
-        },
-      }
-    },
+    sendNotarize: async (hash) => asSent(await contract.notarize(hash)),
+    sendAnchorRoot: async (root, leafCount) =>
+      asSent(await contract.anchorRoot(root, leafCount)),
   }
 }
 
@@ -72,6 +74,7 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     // но ожидание подтверждения обрывается, как при падении приложения
     const crashing: ChainAdapter = {
       isNotarized: real.isNotarized,
+      sendAnchorRoot: real.sendAnchorRoot,
       sendNotarize: async (hash) => {
         const sent = await real.sendNotarize(hash)
         return {
@@ -111,4 +114,37 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     expect(confirmed).toEqual([hash])
     db.close()
   })
+
+  it("батч: 100 документов фиксируются одной транзакцией, каждый проверяем по proof", async () => {
+    const { verifyMerkleProof, buildMerkleTree } = await import("../merkle-core")
+    const adapter = await makeRealAdapter()
+    const db = createDatabase(":memory:")
+    const confirmed: string[] = []
+    const service = new AnchorService(db, adapter, (hash) => confirmed.push(hash))
+
+    const hashes = Array.from({ length: 100 }, () => randomHash())
+    for (const h of hashes) service.enqueue(h)
+
+    expect(await service.processNext()).toBe("processed")
+
+    // все 100 подтверждены одной транзакцией
+    expect(confirmed).toHaveLength(100)
+    const txs = new Set(hashes.map((h) => db.getAnchorByHash(h)!.tx_hash))
+    expect(txs.size).toBe(1)
+
+    // root действительно on-chain, и proof каждого документа сходится к нему
+    const batch = db.getAnchorBatchesForHash(hashes[0])[0]
+    expect(batch.leaf_count).toBe(100)
+    expect(await adapter.isNotarized(batch.root)).toBe(true)
+
+    const tree = buildMerkleTree(batch.members)
+    expect(tree.root).toBe(batch.root)
+    for (const h of hashes) {
+      expect(verifyMerkleProof(h, tree.proofFor(h), batch.root)).toBe(true)
+    }
+
+    // сами файловые хеши on-chain отсутствуют — только корень
+    expect(await adapter.isNotarized(hashes[0])).toBe(false)
+    db.close()
+  }, 60_000)
 })

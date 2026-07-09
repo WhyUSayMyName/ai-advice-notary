@@ -33,6 +33,15 @@ export type CreateVersionResult = {
 
 export type AnchorStatus = "pending" | "sent" | "confirmed" | "failed"
 
+export type AnchorBatch = {
+  root: string
+  tx_hash: string | null
+  leaf_count: number
+  created_at: number
+  /** Файловые хеши, входящие в пакет. */
+  members: string[]
+}
+
 export type AnchorQueueItem = {
   id: number
   hash: string
@@ -141,6 +150,23 @@ function migrate(db: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_anchor_queue_status ON anchor_queue(status, next_attempt_at);
+  `)
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS anchor_batches (
+      root TEXT PRIMARY KEY,
+      tx_hash TEXT,
+      leaf_count INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS anchor_batch_members (
+      root TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      PRIMARY KEY (root, hash)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_batch_members_hash ON anchor_batch_members(hash);
   `)
 
   db.exec(`
@@ -349,14 +375,19 @@ export function createDatabase(dbPath: string) {
 
   /** Следующая pending-запись, чей срок попытки наступил. */
   function getDueAnchor(now: number): AnchorQueueItem | undefined {
+    return getDueAnchors(now, 1)[0]
+  }
+
+  /** Все созревшие pending-записи (для пакетной фиксации). */
+  function getDueAnchors(now: number, limit = 256): AnchorQueueItem[] {
     return db
       .prepare(`
         SELECT * FROM anchor_queue
         WHERE status = 'pending' AND next_attempt_at <= ?
         ORDER BY id
-        LIMIT 1
+        LIMIT ?
       `)
-      .get(now) as AnchorQueueItem | undefined
+      .all(now, limit) as AnchorQueueItem[]
   }
 
   /** Ближайший срок следующей попытки среди pending (или undefined). */
@@ -406,6 +437,64 @@ export function createDatabase(dbPath: string) {
     `).run(attempts, error, Date.now(), id)
   }
 
+  // ---------- Пакеты фиксации (merkle batches) ----------
+
+  function batchRow(root: string): AnchorBatch | undefined {
+    const row = db
+      .prepare(`SELECT * FROM anchor_batches WHERE root = ?`)
+      .get(root) as Omit<AnchorBatch, "members"> | undefined
+    if (!row) return undefined
+
+    const members = (
+      db.prepare(`SELECT hash FROM anchor_batch_members WHERE root = ? ORDER BY hash`).all(root) as Array<{ hash: string }>
+    ).map((r) => r.hash)
+
+    return { ...row, members }
+  }
+
+  /** Регистрирует состав пакета до отправки транзакции (нужен для recovery). */
+  const createAnchorBatch = db.transaction((root: string, hashes: string[]) => {
+    db.prepare(`
+      INSERT INTO anchor_batches (root, tx_hash, leaf_count, created_at)
+      VALUES (?, NULL, ?, ?)
+      ON CONFLICT(root) DO NOTHING
+    `).run(root, hashes.length, Date.now())
+
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO anchor_batch_members (root, hash) VALUES (?, ?)
+    `)
+    for (const hash of hashes) insert.run(root, hash)
+  })
+
+  function setAnchorBatchTx(root: string, txHash: string) {
+    db.prepare(`UPDATE anchor_batches SET tx_hash = ? WHERE root = ?`).run(txHash, root)
+  }
+
+  /** Откат пакета, отправка которого не состоялась. */
+  const deleteAnchorBatch = db.transaction((root: string) => {
+    db.prepare(`DELETE FROM anchor_batch_members WHERE root = ?`).run(root)
+    db.prepare(`DELETE FROM anchor_batches WHERE root = ?`).run(root)
+  })
+
+  function getAnchorBatch(root: string): AnchorBatch | undefined {
+    return batchRow(root)
+  }
+
+  /** Все пакеты, содержащие данный файловый хеш (свежие первыми). */
+  function getAnchorBatchesForHash(hash: string): AnchorBatch[] {
+    const roots = db
+      .prepare(`
+        SELECT m.root
+        FROM anchor_batch_members m
+        JOIN anchor_batches b ON b.root = m.root
+        WHERE m.hash = ?
+        ORDER BY b.created_at DESC
+      `)
+      .all(hash) as Array<{ root: string }>
+
+    return roots.map((r) => batchRow(r.root)!).filter(Boolean)
+  }
+
   return {
     getArtifacts,
     getArtifactsGroupedLatest,
@@ -421,12 +510,18 @@ export function createDatabase(dbPath: string) {
     getAnchorQueue,
     enqueueAnchor,
     getDueAnchor,
+    getDueAnchors,
     getNextAnchorAttemptAt,
     getUnconfirmedAnchors,
     markAnchorSent,
     markAnchorConfirmed,
     rescheduleAnchor,
     markAnchorFailed,
+    createAnchorBatch,
+    setAnchorBatchTx,
+    deleteAnchorBatch,
+    getAnchorBatch,
+    getAnchorBatchesForHash,
     close: () => db.close(),
   }
 }

@@ -29,12 +29,20 @@ system for provable integrity of digital documents and AI-generated advice.
   down is confirmed without re-sending. Verified by unit tests and a live
   e2e test against a real node (simulated crash after send).
 
+- **Phase 5.1 — Merkle batching.**
+  Canonical Merkle tree (domain-separated leaves and nodes, sorted pairs,
+  odd-node promotion), `anchorRoot(root, leafCount)` in the contract, batch
+  mode in the anchor worker (N due documents → one transaction), evidence
+  bundle v2 with per-document proofs, proof folding in the CLI verifier
+  (`BAD_PROOF` verdict). Live e2e: 100 documents anchored by a single
+  transaction, each verifiable by an auditor; batch-aware audit and crash
+  recovery via the root.
+
 ## Next
-- **Phase 5 — Economics and real networks.**
-  Merkle-tree batching (`anchorRoot`): hundreds of documents per transaction,
-  per-document Merkle proofs in the evidence bundle; public testnet deployment;
-  experimental evaluation (cost, latency, throughput — scenarios S1–S4,
-  metrics M1–M6 from the research plan) with published results.
+- **Phase 5.2 — Real networks and experiments.**
+  Public testnet deployment; experimental evaluation (cost, latency,
+  throughput — scenarios S1–S4, metrics M1–M6 from the research plan,
+  single vs batched anchoring) with published results.
 - **Phase 6 — Production readiness.**
   Key management outside `.env` (OS-encrypted storage / external anchor service),
   CI (contract + app tests + lint), UI redesign and decomposition of `App.tsx`.
@@ -58,11 +66,14 @@ system for provable integrity of digital documents and AI-generated advice.
 этап 3 — независимый CLI-верификатор (`verifier-cli/`) и экспорт «пакета
 доказательств» из приложения: аудитор проверяет целостность документов,
 не доверяя софту оператора; этап 4 — anchor-сервис: устойчивая очередь
-фиксаций с ретраями и восстановлением после сбоя без дублей on-chain.
+фиксаций с ретраями и восстановлением после сбоя без дублей on-chain;
+этап 5.1 — Merkle-батчинг: N документов одной транзакцией `anchorRoot`,
+пруфы в пакете доказательств v2, проверка пруфов в CLI (живой e2e:
+100 документов одной транзакцией).
 
-**Дальше:** этап 5 — Merkle-батчинг, testnet, экспериментальная оценка
-(стоимость/латентность/пропускная способность); этап 6 — управление ключами,
-CI, редизайн UI.
+**Дальше:** этап 5.2 — testnet и экспериментальная оценка
+(стоимость/латентность/пропускная способность, одиночная vs пакетная
+фиксация); этап 6 — управление ключами, CI, редизайн UI.
 
 **Исследовательский трек:** канонизация структурированных артефактов и
 LLM-диалогов, научная публикация результатов экспериментов.
