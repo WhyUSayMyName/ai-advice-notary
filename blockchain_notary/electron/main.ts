@@ -12,6 +12,7 @@ import {
 } from "../src/main/notary"
 import { generateCertificatePdf } from "../src/main/certificate"
 import { exportEvidenceBundle } from "../src/main/evidence"
+import { onAnchorEvent, startAnchorService } from "../src/main/anchor"
 
 import "dotenv/config"
 import { JsonRpcProvider } from "ethers"
@@ -173,7 +174,22 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow)
+// События очереди фиксации транслируются во все окна renderer'а
+onAnchorEvent((event) => {
+  for (const w of BrowserWindow.getAllWindows()) {
+    w.webContents.send("anchor:updated", event)
+  }
+})
+
+app.whenReady().then(() => {
+  createWindow()
+
+  // Recovery: незавершённые фиксации сверяются с чейном, воркер стартует в фоне.
+  // Недоступность узла на старте не должна ронять приложение.
+  startAnchorService().catch((e) => {
+    console.error("anchor service start failed:", e)
+  })
+})
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()

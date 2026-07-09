@@ -159,6 +159,43 @@ export default function App() {
     void inspectChains()
   }, [loadArtifacts, runAudit, inspectChains])
 
+  // События anchor-очереди: живой статус фиксаций из main-процесса
+  useEffect(() => {
+    const unsubscribe = window.api.onAnchorUpdated((event) => {
+      const shortHash = short(event.item.hash)
+      switch (event.type) {
+        case "queued":
+          log(`Очередь: ${shortHash} поставлен в очередь фиксации`)
+          break
+        case "sent":
+          log(`Очередь: ${shortHash} — транзакция отправлена (${short(event.item.tx_hash ?? "")})`)
+          break
+        case "confirmed":
+          log(`Очередь: ${shortHash} — подтверждено ✅ tx=${short(event.item.tx_hash ?? "")}`)
+          setTxHash((current) => current || (event.item.tx_hash ?? ""))
+          void loadArtifacts()
+          void runAudit()
+          break
+        case "recovered":
+          log(`Очередь: ${shortHash} — фиксация подтверждена после перезапуска ✅`)
+          void loadArtifacts()
+          void runAudit()
+          break
+        case "retry":
+          log(
+            `Очередь: ${shortHash} — попытка ${event.item.attempts} не удалась, повтор позже (${event.item.last_error ?? ""})`
+          )
+          break
+        case "failed":
+          log(
+            `Очередь: ${shortHash} — фиксация НЕ выполнена после ${event.item.attempts} попыток: ${event.item.last_error ?? ""}`
+          )
+          break
+      }
+    })
+    return unsubscribe
+  }, [loadArtifacts, runAudit])
+
   const connect = async () => {
     log(`Подключение к ${rpcUrl}`)
     setNetStatus("Подключение…")
@@ -234,11 +271,11 @@ export default function App() {
 
     if (r.alreadyNotarized) {
       log("Файл уже был нотариально записан ранее")
-    } else {
-      log(`TX OK: ${r.txHash} (block ${r.blockNumber})`)
+      await checkHash(r.hash ?? hashHex)
+    } else if (r.queued) {
+      log("Фиксация поставлена в очередь — подтверждение придёт автоматически")
     }
 
-    await checkHash(r.hash ?? hashHex)
     await refreshAll()
   }
 
@@ -272,11 +309,11 @@ export default function App() {
     }
     if (r.alreadyNotarized) {
       log("Эта версия уже была нотариально записана")
-    } else {
-      log(`TX OK: ${r.txHash} (block ${r.blockNumber})`)
+      await checkHash(r.hash ?? hashHex)
+    } else if (r.queued) {
+      log("Фиксация версии поставлена в очередь — подтверждение придёт автоматически")
     }
 
-    await checkHash(r.hash ?? hashHex)
     await refreshAll()
   }
 

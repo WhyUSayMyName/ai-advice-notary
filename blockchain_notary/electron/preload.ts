@@ -55,6 +55,15 @@ contextBridge.exposeInMainWorld("api", {
   exportEvidence: (rpcUrl?: string) =>
     ipcRenderer.invoke("evidence:export", rpcUrl),
 
+  // anchor queue
+  listAnchorQueue: () => ipcRenderer.invoke("anchor:list"),
+
+  onAnchorUpdated: (callback: (event: unknown) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on("anchor:updated", listener)
+    return () => ipcRenderer.removeListener("anchor:updated", listener)
+  },
+
   saveCertificatePdf: (payload: {
     filePath: string
     hashHex: string

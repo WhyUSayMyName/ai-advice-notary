@@ -59,6 +59,26 @@ type VersionChainReport = {
   items: VersionChainItem[]
 }
 
+type AnchorStatus = "pending" | "sent" | "confirmed" | "failed"
+
+type AnchorQueueItem = {
+  id: number
+  hash: string
+  rpc_url: string | null
+  status: AnchorStatus
+  attempts: number
+  next_attempt_at: number
+  tx_hash: string | null
+  last_error: string | null
+  created_at: number
+  updated_at: number
+}
+
+type AnchorUpdateEvent = {
+  type: "queued" | "sent" | "confirmed" | "retry" | "failed" | "recovered"
+  item: AnchorQueueItem
+}
+
   interface Window {
     api: {
       // system
@@ -130,6 +150,9 @@ type VersionChainReport = {
         ok: boolean
         hash?: string
         alreadyNotarized?: boolean
+        /** true — фиксация поставлена в очередь anchor-сервиса */
+        queued?: boolean
+        queueStatus?: AnchorStatus
         txHash?: string | null
         blockNumber?: number | null
         artifact?: ArtifactRecord | null
@@ -146,6 +169,9 @@ type VersionChainReport = {
         /** true — файл не изменился с последней версии, новая версия не создавалась */
         unchanged?: boolean
         alreadyNotarized?: boolean
+        /** true — фиксация поставлена в очередь anchor-сервиса */
+        queued?: boolean
+        queueStatus?: AnchorStatus
         txHash?: string | null
         blockNumber?: number | null
         artifact?: ArtifactRecord | null
@@ -210,6 +236,14 @@ type VersionChainReport = {
         blockNumber?: number
         error?: string
       }>
+
+      listAnchorQueue: () => Promise<{
+        ok: boolean
+        queue?: AnchorQueueItem[]
+        error?: string
+      }>
+
+      onAnchorUpdated: (callback: (event: AnchorUpdateEvent) => void) => () => void
 
       exportEvidence: (rpcUrl?: string) => Promise<{
         ok: boolean

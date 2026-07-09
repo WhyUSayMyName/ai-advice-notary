@@ -21,11 +21,15 @@ system for provable integrity of digital documents and AI-generated advice.
   acceptance: a single flipped byte in a notarized document is detected
   without access to the operator's database.
 
-## Next
-
 - **Phase 4 — Anchor service.**
-  Persistent notarization queue with retries, crash recovery
-  (reconcile `sent` records against the chain on startup), sequential worker.
+  Persistent notarization queue in SQLite: sequential worker (no nonce races),
+  exponential backoff with an attempt limit, deduplication by hash, live
+  status events in the UI. Crash recovery on startup reconciles unconfirmed
+  records against the chain: a transaction that was mined while the app was
+  down is confirmed without re-sending. Verified by unit tests and a live
+  e2e test against a real node (simulated crash after send).
+
+## Next
 - **Phase 5 — Economics and real networks.**
   Merkle-tree batching (`anchorRoot`): hundreds of documents per transaction,
   per-document Merkle proofs in the evidence bundle; public testnet deployment;
@@ -53,10 +57,10 @@ system for provable integrity of digital documents and AI-generated advice.
 (уникальность в рамках артефакта, миграция, явные конфликты, юнит-тесты);
 этап 3 — независимый CLI-верификатор (`verifier-cli/`) и экспорт «пакета
 доказательств» из приложения: аудитор проверяет целостность документов,
-не доверяя софту оператора.
+не доверяя софту оператора; этап 4 — anchor-сервис: устойчивая очередь
+фиксаций с ретраями и восстановлением после сбоя без дублей on-chain.
 
-**Дальше:** этап 4 — anchor-сервис с очередью
-и ретраями; этап 5 — Merkle-батчинг, testnet, экспериментальная оценка
+**Дальше:** этап 5 — Merkle-батчинг, testnet, экспериментальная оценка
 (стоимость/латентность/пропускная способность); этап 6 — управление ключами,
 CI, редизайн UI.
 

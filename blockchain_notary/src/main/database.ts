@@ -2,7 +2,12 @@ import path from "path"
 import { app } from "electron"
 import { createDatabase, type NotaryDatabase } from "./database-core"
 
-export type { ArtifactRecord, CreateVersionResult } from "./database-core"
+export type {
+  ArtifactRecord,
+  CreateVersionResult,
+  AnchorQueueItem,
+  AnchorStatus,
+} from "./database-core"
 export { HashConflictError } from "./database-core"
 
 let instance: NotaryDatabase | null = null
@@ -12,6 +17,11 @@ function getDb(): NotaryDatabase {
     instance = createDatabase(path.join(app.getPath("userData"), "notary.db"))
   }
   return instance
+}
+
+/** Прямой доступ к экземпляру БД — для anchor-сервиса. */
+export function getDatabase(): NotaryDatabase {
+  return getDb()
 }
 
 export const getArtifacts: NotaryDatabase["getArtifacts"] = (...args) =>

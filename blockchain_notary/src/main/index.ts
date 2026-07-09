@@ -11,6 +11,7 @@ import {
 } from "./artifacts"
 import { auditArtifacts } from "./audit"
 import { inspectVersionChains } from "./version-chain"
+import { listAnchorQueue } from "./anchor"
 
 ipcMain.handle("artifact:register", async (_event, filePath: string, displayName?: string) => {
   try {
@@ -115,6 +116,15 @@ ipcMain.handle("artifact:inspectChains", async () => {
   try {
     const data = inspectVersionChains()
     return { ok: true, reports: data }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: msg }
+  }
+})
+
+ipcMain.handle("anchor:list", async () => {
+  try {
+    return { ok: true, queue: listAnchorQueue() }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return { ok: false, error: msg }

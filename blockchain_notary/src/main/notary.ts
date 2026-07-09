@@ -36,6 +36,24 @@ export async function notaryGetRecord(hashHex: string, rpcUrl?: string) {
   };
 }
 
+/**
+ * Отправка транзакции с раздельным ожиданием подтверждения —
+ * используется anchor-сервисом, чтобы зафиксировать tx hash в очереди
+ * до того, как транзакция попадёт в блок.
+ */
+export async function notarySendNotarize(hashHex: string, rpcUrl?: string) {
+  const c = contractFor(rpcUrl)
+  const tx = await c.notarize(hashHex)
+
+  return {
+    txHash: tx.hash as string,
+    wait: async () => {
+      const receipt = await tx.wait()
+      return { blockNumber: (receipt?.blockNumber ?? null) as number | null }
+    },
+  }
+}
+
 export async function notaryNotarize(hashHex: string, rpcUrl?: string) {
   try {
     const c = contractFor(rpcUrl);

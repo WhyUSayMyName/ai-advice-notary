@@ -32,8 +32,11 @@ in the project's research documentation.
   a single readable file with one dependency that lets an auditor verify
   documents *without trusting the operator's software* — the key piece of
   the trust model.
-- 26 automated tests (6 contract + 20 unit). See [ROADMAP.md](ROADMAP.md) for
-  what's next.
+- **Anchor service**: persistent notarization queue with retries and crash
+  recovery — a transaction mined while the app was down is confirmed on
+  restart without creating an on-chain duplicate.
+- 37 automated tests (6 contract + 29 unit + 2 live e2e). See
+  [ROADMAP.md](ROADMAP.md) for what's next.
 
 ## Repository layout
 

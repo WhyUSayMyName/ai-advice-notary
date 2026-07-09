@@ -31,6 +31,21 @@ export type CreateVersionResult = {
   record: ArtifactRecord
 }
 
+export type AnchorStatus = "pending" | "sent" | "confirmed" | "failed"
+
+export type AnchorQueueItem = {
+  id: number
+  hash: string
+  rpc_url: string | null
+  status: AnchorStatus
+  attempts: number
+  next_attempt_at: number
+  tx_hash: string | null
+  last_error: string | null
+  created_at: number
+  updated_at: number
+}
+
 const NEW_SCHEMA = `
   CREATE TABLE IF NOT EXISTS artifacts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,6 +124,23 @@ function migrate(db: Database.Database) {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_artifacts_artifact_id ON artifacts(artifact_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_hash ON artifacts(hash);
+  `)
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS anchor_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash TEXT NOT NULL UNIQUE,
+      rpc_url TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at INTEGER NOT NULL DEFAULT 0,
+      tx_hash TEXT,
+      last_error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_anchor_queue_status ON anchor_queue(status, next_attempt_at);
   `)
 
   db.exec(`
@@ -267,6 +299,113 @@ export function createDatabase(dbPath: string) {
     `).run(txHash, hash)
   }
 
+  // ---------- Очередь фиксации (anchor queue) ----------
+
+  function getAnchorByHash(hash: string): AnchorQueueItem | undefined {
+    return db
+      .prepare(`SELECT * FROM anchor_queue WHERE hash = ?`)
+      .get(hash) as AnchorQueueItem | undefined
+  }
+
+  function getAnchorQueue(): AnchorQueueItem[] {
+    return db
+      .prepare(`SELECT * FROM anchor_queue ORDER BY id`)
+      .all() as AnchorQueueItem[]
+  }
+
+  /**
+   * Ставит хеш в очередь фиксации. Один хеш — одна запись:
+   * повторная постановка возвращает существующую, а окончательно
+   * проваленная (failed) реактивируется для новой серии попыток.
+   */
+  function enqueueAnchor(hash: string, rpcUrl?: string): AnchorQueueItem {
+    const existing = getAnchorByHash(hash)
+
+    if (existing) {
+      if (existing.status === "failed") {
+        db.prepare(`
+          UPDATE anchor_queue
+          SET status = 'pending', attempts = 0, next_attempt_at = 0,
+              last_error = NULL, updated_at = ?
+          WHERE id = ?
+        `).run(Date.now(), existing.id)
+        return getAnchorByHash(hash)!
+      }
+      return existing
+    }
+
+    const now = Date.now()
+    const info = db
+      .prepare(`
+        INSERT INTO anchor_queue (hash, rpc_url, status, attempts, next_attempt_at, created_at, updated_at)
+        VALUES (?, ?, 'pending', 0, 0, ?, ?)
+      `)
+      .run(hash, rpcUrl ?? null, now, now)
+
+    return db
+      .prepare(`SELECT * FROM anchor_queue WHERE id = ?`)
+      .get(info.lastInsertRowid) as AnchorQueueItem
+  }
+
+  /** Следующая pending-запись, чей срок попытки наступил. */
+  function getDueAnchor(now: number): AnchorQueueItem | undefined {
+    return db
+      .prepare(`
+        SELECT * FROM anchor_queue
+        WHERE status = 'pending' AND next_attempt_at <= ?
+        ORDER BY id
+        LIMIT 1
+      `)
+      .get(now) as AnchorQueueItem | undefined
+  }
+
+  /** Ближайший срок следующей попытки среди pending (или undefined). */
+  function getNextAnchorAttemptAt(): number | undefined {
+    const row = db
+      .prepare(`SELECT MIN(next_attempt_at) AS t FROM anchor_queue WHERE status = 'pending'`)
+      .get() as { t: number | null }
+    return row.t ?? undefined
+  }
+
+  /** Все незавершённые записи (pending/sent) — для recovery при старте. */
+  function getUnconfirmedAnchors(): AnchorQueueItem[] {
+    return db
+      .prepare(`SELECT * FROM anchor_queue WHERE status IN ('pending', 'sent') ORDER BY id`)
+      .all() as AnchorQueueItem[]
+  }
+
+  function markAnchorSent(id: number, txHash: string) {
+    db.prepare(`
+      UPDATE anchor_queue SET status = 'sent', tx_hash = ?, updated_at = ? WHERE id = ?
+    `).run(txHash, Date.now(), id)
+  }
+
+  function markAnchorConfirmed(id: number, txHash?: string | null) {
+    db.prepare(`
+      UPDATE anchor_queue
+      SET status = 'confirmed', tx_hash = COALESCE(?, tx_hash), last_error = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(txHash ?? null, Date.now(), id)
+  }
+
+  /** Неудачная попытка: вернуть в pending с новым сроком. */
+  function rescheduleAnchor(id: number, attempts: number, nextAttemptAt: number, error: string) {
+    db.prepare(`
+      UPDATE anchor_queue
+      SET status = 'pending', attempts = ?, next_attempt_at = ?, last_error = ?, updated_at = ?
+      WHERE id = ?
+    `).run(attempts, nextAttemptAt, error, Date.now(), id)
+  }
+
+  /** Лимит попыток исчерпан. */
+  function markAnchorFailed(id: number, attempts: number, error: string) {
+    db.prepare(`
+      UPDATE anchor_queue
+      SET status = 'failed', attempts = ?, last_error = ?, updated_at = ?
+      WHERE id = ?
+    `).run(attempts, error, Date.now(), id)
+  }
+
   return {
     getArtifacts,
     getArtifactsGroupedLatest,
@@ -278,6 +417,16 @@ export function createDatabase(dbPath: string) {
     createArtifactVersion,
     upsertArtifact,
     markArtifactNotarized,
+    getAnchorByHash,
+    getAnchorQueue,
+    enqueueAnchor,
+    getDueAnchor,
+    getNextAnchorAttemptAt,
+    getUnconfirmedAnchors,
+    markAnchorSent,
+    markAnchorConfirmed,
+    rescheduleAnchor,
+    markAnchorFailed,
     close: () => db.close(),
   }
 }

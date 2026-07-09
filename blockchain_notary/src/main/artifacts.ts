@@ -6,14 +6,13 @@ import {
   getArtifactsGroupedLatest,
   getArtifactHistory,
   getLatestArtifactVersion,
-  markArtifactNotarized,
   upsertArtifact,
 } from "./database"
 import {
   notaryGetRecord,
   notaryIsNotarized,
-  notaryNotarize,
 } from "./notary"
+import { getAnchorService } from "./anchor"
 
 export async function registerArtifact(filePath: string, displayName?: string) {
   const hash = await sha256FileHex(filePath)
@@ -79,18 +78,16 @@ export async function notarizeArtifact(filePath: string, displayName?: string, r
     }
   }
 
-  const result = await notaryNotarize(hash, rpcUrl)
-
-  markArtifactNotarized(hash, result.txHash)
-
-  const updated = getArtifactByHash(hash)
+  // Фиксация асинхронная: хеш уходит в очередь anchor-сервиса,
+  // подтверждение придёт событием anchor:updated
+  const queueItem = getAnchorService().enqueue(hash, rpcUrl)
 
   return {
     hash,
     alreadyNotarized: false,
-    txHash: result.txHash,
-    blockNumber: result.blockNumber,
-    artifact: updated ?? null,
+    queued: true,
+    queueStatus: queueItem.status,
+    artifact: getArtifactByHash(hash) ?? null,
   }
 }
 
@@ -118,19 +115,15 @@ export async function notarizeArtifactVersion(
     }
   }
 
-  const result = await notaryNotarize(hash, rpcUrl)
-
-  markArtifactNotarized(hash, result.txHash)
-
-  const updated = getArtifactByHash(hash)
+  const queueItem = getAnchorService().enqueue(hash, rpcUrl)
 
   return {
     hash,
     unchanged: versionResult.unchanged,
     alreadyNotarized: false,
-    txHash: result.txHash,
-    blockNumber: result.blockNumber,
-    artifact: updated ?? null,
+    queued: true,
+    queueStatus: queueItem.status,
+    artifact: getArtifactByHash(hash) ?? null,
   }
 }
 
