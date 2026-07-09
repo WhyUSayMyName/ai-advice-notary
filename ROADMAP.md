@@ -46,6 +46,18 @@ system for provable integrity of digital documents and AI-generated advice.
 - **Phase 6 — Production readiness.**
   Key management outside `.env` (OS-encrypted storage / external anchor service),
   CI (contract + app tests + lint), UI redesign and decomposition of `App.tsx`.
+- **Phase 7 — Integration layer (EDMS/СЭД).**
+  Extract the electron-free core (`database-core`, `anchor-service`,
+  `merkle-core`, `evidence-core`) into a `notary-core` package and ship a
+  headless sidecar service on top of it: REST API (`POST /artifacts` accepting
+  a file or a bare hash, confirmation webhooks, evidence bundle export) plus a
+  zero-integration folder-watcher mode. EDMS workflow engines (Directum RX,
+  ELMA365, 1C:DO, Docsvision, Tessa) call the API on document lifecycle events;
+  hash-idempotent enqueueing makes retries from workflows safe. The desktop app
+  remains the standalone mode for small organizations. Positioning: a
+  provability layer on top of an existing EDMS — anchoring complements
+  qualified e-signatures (authorship) with proof of existence in time that
+  even the EDMS administrator cannot rewrite.
 
 ## Research track
 
@@ -73,7 +85,13 @@ system for provable integrity of digital documents and AI-generated advice.
 
 **Дальше:** этап 5.2 — testnet и экспериментальная оценка
 (стоимость/латентность/пропускная способность, одиночная vs пакетная
-фиксация); этап 6 — управление ключами, CI, редизайн UI.
+фиксация); этап 6 — управление ключами, CI, редизайн UI; этап 7 —
+интеграционный слой для СЭД: выделение notary-core, headless-сервис с REST
+API (файл или готовый хеш, webhook, выгрузка пакета доказательств) и режим
+наблюдателя за папками; вызов из workflow-движков СЭД по событиям жизненного
+цикла документа. Позиционирование: слой доказуемости поверх существующего
+документооборота — дополнение к ЭП (авторство) доказательством существования
+во времени, которое не может переписать даже администратор СЭД.
 
 **Исследовательский трек:** канонизация структурированных артефактов и
 LLM-диалогов, научная публикация результатов экспериментов.

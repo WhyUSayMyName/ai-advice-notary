@@ -21,6 +21,10 @@ in the project's research documentation.
   stored by the same organization that may be interested in rewriting them before
   an external audit. Classic backups and signatures don't help — keys and logs
   belong to the same operator.
+- **A layer, not a replacement.** The system is designed to sit on top of an
+  existing EDMS (via a sidecar API called from workflow events, or a
+  folder-watcher) and to run standalone as a desktop app — see
+  [ROADMAP.md](ROADMAP.md), phase 7.
 
 ## What works today
 
