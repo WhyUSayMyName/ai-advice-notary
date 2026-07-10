@@ -38,6 +38,19 @@ system for provable integrity of digital documents and AI-generated advice.
   transaction, each verifiable by an auditor; batch-aware audit and crash
   recovery via the root.
 
+- **Phase 8 — LLM accountability chain (first channel).**
+  Canonical formats `notary-dialog/v1` (deterministic JSON of an LLM dialog:
+  provider, model, messages, params, per-dialog salt against brute-forcing)
+  and `notary-attestation/v1` (a human act: "I reviewed these dialogs and
+  approved / modified / rejected this decision", linking dialog hashes to the
+  decision document). A canonicalized dialog becomes a file, so the entire
+  existing pipeline — queue, Merkle batching, evidence bundles, CLI verifier,
+  audit — works for dialogs unchanged. Delivered as an MCP server
+  (tools: `notarize_dialog`, `attest_decision`, `check_hash`) usable from any
+  MCP-capable client; shares the SQLite queue with the desktop app (WAL).
+  The gap between an auto-captured dialog and a human attestation is what
+  distinguishes a validated decision from raw AI output.
+
 ## Next
 - **Phase 5.2 — Real networks and experiments.**
   Public testnet deployment; experimental evaluation (cost, latency,
@@ -81,7 +94,11 @@ system for provable integrity of digital documents and AI-generated advice.
 фиксаций с ретраями и восстановлением после сбоя без дублей on-chain;
 этап 5.1 — Merkle-батчинг: N документов одной транзакцией `anchorRoot`,
 пруфы в пакете доказательств v2, проверка пруфов в CLI (живой e2e:
-100 документов одной транзакцией).
+100 документов одной транзакцией); этап 8 — цепочка ответственности LLM:
+канонические форматы notary-dialog/v1 и notary-attestation/v1, MCP-сервер
+с инструментами notarize_dialog / attest_decision / check_hash — диалог
+становится файлом, и весь конвейер (очередь, батчи, бандлы, верификатор)
+работает с ним без изменений.
 
 **Дальше:** этап 5.2 — testnet и экспериментальная оценка
 (стоимость/латентность/пропускная способность, одиночная vs пакетная

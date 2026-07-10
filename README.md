@@ -39,6 +39,12 @@ in the project's research documentation.
 - **Anchor service**: persistent notarization queue with retries and crash
   recovery — a transaction mined while the app was down is confirmed on
   restart without creating an on-chain duplicate.
+- **Merkle batching**: N documents anchored by a single transaction
+  (`anchorRoot`); per-document proofs travel in the evidence bundle and are
+  verified by the CLI.
+- **LLM accountability (MCP server)**: canonical dialog fixation
+  (`notary-dialog/v1`) and human attestation acts (`notary-attestation/v1`)
+  callable from Claude Code or any MCP client — see below.
 - **Merkle batching**: N pending documents are anchored by a single
   `anchorRoot` transaction; the evidence bundle carries a per-document proof
   and the CLI verifier folds it to the on-chain root (live e2e: 100 documents,
@@ -71,6 +77,39 @@ Before the first run, create `blockchain_notary/.env` from
 key printed by `npx hardhat node`).
 
 Tests: `npx hardhat test` (contracts), `npm test` in `blockchain_notary/` (app).
+
+## MCP server (LLM accountability)
+
+Build once, then register in your MCP client:
+
+```shell
+cd blockchain_notary
+npm run build:mcp
+```
+
+`.mcp.json` for Claude Code (project root):
+
+```json
+{
+  "mcpServers": {
+    "ai-advice-notary": {
+      "command": "node",
+      "args": ["blockchain_notary/dist-mcp/server.mjs"],
+      "env": {
+        "RPC_URL": "http://127.0.0.1:8545",
+        "NOTARY_ADDRESS": "0x...",
+        "NOTARY_PK": "0x..."
+      }
+    }
+  }
+}
+```
+
+Tools: `notarize_dialog` (canonicalize and anchor an LLM dialog),
+`attest_decision` (a human act linking dialog hashes to a decision document),
+`check_hash` (on-chain status). Without chain env vars the server runs in
+enqueue-only mode; hashes are anchored once a worker gets node access.
+The queue and registry are shared with the desktop app.
 
 License: [MIT](LICENSE).
 

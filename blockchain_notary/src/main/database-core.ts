@@ -178,6 +178,10 @@ function migrate(db: Database.Database) {
 
 export function createDatabase(dbPath: string) {
   const db = new Database(dbPath)
+  // WAL: базу одновременно открывают Electron-приложение и MCP-сервер;
+  // busy_timeout вместо мгновенного SQLITE_BUSY при пересечении записей
+  db.pragma("journal_mode = WAL")
+  db.pragma("busy_timeout = 5000")
   migrate(db)
 
   function getArtifacts(): ArtifactRecord[] {
