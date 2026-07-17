@@ -74,6 +74,17 @@ system for provable integrity of digital documents and AI-generated advice.
 
 ## Research track
 
+- **Linked anchor ledger (gap-evident history).** Per-organization hash chain of
+  anchors in the Certificate Transparency style: each batch anchor commits to the
+  previous chain head, `Cₙ = SHA256(0x02 ‖ Cₙ₋₁ ‖ batchRootₙ)`, anchored via the
+  existing `anchorRoot` (no contract change — the chained root is just a `bytes32`).
+  Publishing the head periodically to the regulator cryptographically commits the
+  entire anchoring history: hidden, truncated or reordered epochs become detectable
+  (closes the "destruction / concealment" threat at the sequence level, beyond the
+  per-document level). Limits: does not force completeness (never-anchored data
+  stays invisible — organizational control), genesis/head trust, and equivocation
+  only relative to a committed anchoring identity. Bundle format `notary-evidence/v3`,
+  backward compatible. Spec in the research docs.
 - Canonicalization of structured artifacts (JSON, CSV) and **LLM dialogs** —
   provable fixation of AI-generated advice (salted hash format prototyped earlier
   in git history).
