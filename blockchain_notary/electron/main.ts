@@ -29,6 +29,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : RENDERER_DIST
 
 let win: BrowserWindow | null = null
+let splash: BrowserWindow | null = null
 
 ipcMain.handle("rpc:connect", async (_e, rpcUrl: string) => {
   try {
@@ -160,8 +161,61 @@ ipcMain.handle("evidence:export", async (_e, rpcUrl?: string) => {
   }
 })
 
+/** Минимальное время показа заставки, чтобы она не мелькала на быстрых машинах */
+const SPLASH_MIN_MS = 1600
+
+function createSplash() {
+  splash = new BrowserWindow({
+    width: 620,
+    height: 400,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    center: true,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+  })
+
+  splash.once("ready-to-show", () => splash?.show())
+
+  if (VITE_DEV_SERVER_URL) {
+    splash.loadURL(`${VITE_DEV_SERVER_URL.replace(/\/$/, "")}/splash.html`)
+  } else {
+    splash.loadFile(path.join(RENDERER_DIST, "splash.html"))
+  }
+}
+
+/** Строка статуса на заставке; к моменту вызова окно может быть уже закрыто */
+function splashStatus(text: string) {
+  if (!splash || splash.isDestroyed()) return
+  splash.webContents
+    .executeJavaScript(`window.splashStatus && window.splashStatus(${JSON.stringify(text)})`)
+    .catch(() => {})
+}
+
+async function closeSplash() {
+  if (!splash || splash.isDestroyed()) return
+
+  const w = splash
+  splash = null
+
+  try {
+    await w.webContents.executeJavaScript(`document.body.classList.add("out")`)
+    setTimeout(() => {
+      if (!w.isDestroyed()) w.destroy()
+    }, 260)
+  } catch {
+    w.destroy()
+  }
+}
+
 function createWindow() {
   win = new BrowserWindow({
+    // Показываем только после первой отрисовки — иначе видно белую вспышку
+    show: false,
+    backgroundColor: "#08090B",
     webPreferences: {
       preload: path.join(__dirname, "preload.mjs"),
     },
@@ -174,21 +228,53 @@ function createWindow() {
   }
 }
 
-// События очереди фиксации транслируются во все окна renderer'а
+/** Заставка уступает место главному окну, выдержав минимальную паузу */
+function revealMainWindow(splashShownAt: number) {
+  const wait = Math.max(0, SPLASH_MIN_MS - (Date.now() - splashShownAt))
+  setTimeout(() => {
+    win?.show()
+    void closeSplash()
+  }, wait)
+}
+
+// События очереди фиксации транслируются во все окна renderer'а (кроме заставки)
 onAnchorEvent((event) => {
   for (const w of BrowserWindow.getAllWindows()) {
+    if (w === splash) continue
     w.webContents.send("anchor:updated", event)
   }
 })
 
 app.whenReady().then(() => {
+  createSplash()
+  const splashShownAt = Date.now()
+
   createWindow()
 
   // Recovery: незавершённые фиксации сверяются с чейном, воркер стартует в фоне.
-  // Недоступность узла на старте не должна ронять приложение.
-  startAnchorService().catch((e) => {
-    console.error("anchor service start failed:", e)
-  })
+  // Недоступность узла на старте не должна ронять приложение — главное окно
+  // откроется в любом случае, статус лишь отражается на заставке.
+  splashStatus("Открытие локального реестра")
+  startAnchorService()
+    .then(({ confirmed, requeued }) => {
+      splashStatus(
+        confirmed || requeued
+          ? `Восстановлено фиксаций: ${confirmed + requeued}`
+          : "Очередь фиксаций проверена"
+      )
+    })
+    .catch((e) => {
+      console.error("anchor service start failed:", e)
+      splashStatus("Реестр недоступен — фиксации останутся в очереди")
+    })
+
+  win?.once("ready-to-show", () => revealMainWindow(splashShownAt))
+
+  // Страховка: если renderer так и не отрисовался, приложение всё равно
+  // не должно остаться навсегда под заставкой
+  setTimeout(() => {
+    if (win && !win.isVisible()) revealMainWindow(splashShownAt)
+  }, 10_000)
 })
 
 app.on("window-all-closed", () => {

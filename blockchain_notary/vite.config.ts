@@ -4,6 +4,9 @@ import electron from "vite-plugin-electron/simple"
 import react from "@vitejs/plugin-react"
 
 export default defineConfig({
+  // Явный IPv4: по умолчанию dev-сервер слушает только [::1], а Electron
+  // резолвит localhost в 127.0.0.1 — окна получали ERR_CONNECTION_REFUSED
+  server: { host: "127.0.0.1" },
   plugins: [
     react(),
     electron({

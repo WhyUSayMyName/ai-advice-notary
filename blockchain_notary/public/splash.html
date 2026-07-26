@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>Yggdrasil</title>
+<style>
+  html, body { height: 100%; margin: 0; background: transparent; overflow: hidden; }
+
+  body {
+    font: 400 13px/1.5 "Segoe UI", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    opacity: 1; transition: opacity .24s ease;
+  }
+  body.out { opacity: 0; }
+
+  .frame {
+    position: relative; height: 100%; border-radius: 14px; overflow: hidden;
+    background:
+      radial-gradient(44% 38% at 50% 30%, rgba(180, 235, 250, .28) 0%, rgba(120, 190, 230, .12) 40%, rgba(30, 35, 82, 0) 74%),
+      radial-gradient(92% 74% at 50% 18%, #2A3168 0%, #1A1E48 46%, #0B0D28 80%, #070818 100%);
+    box-shadow: inset 0 0 0 1px rgba(160, 190, 240, .16);
+  }
+
+  .portal {
+    position: absolute; top: 4%; left: 50%; transform: translateX(-50%);
+    width: 76px; height: 190px; border-radius: 50% / 46%;
+    background: radial-gradient(closest-side,
+      #F0FBFF 0%, rgba(216, 246, 255, .9) 32%, rgba(130, 210, 240, .38) 60%, rgba(110, 190, 235, 0) 100%);
+    filter: blur(3px);
+    animation: breathe 6s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: .85; transform: translateX(-50%) scaleY(1); }
+    50%      { opacity: 1;   transform: translateX(-50%) scaleY(1.06); }
+  }
+
+  .scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .mist {
+    position: absolute; left: -14%; right: -14%; top: 42%; height: 150px;
+    background: linear-gradient(to bottom,
+      rgba(126, 143, 205, 0), rgba(133, 154, 210, .2), rgba(126, 143, 205, 0));
+    filter: blur(12px);
+    animation: drift 26s linear infinite alternate;
+  }
+  @keyframes drift { from { transform: translateX(-5%); } to { transform: translateX(5%); } }
+
+  .mote {
+    position: absolute; border-radius: 50%; background: rgba(198, 238, 250, .75);
+    animation: rise linear infinite;
+  }
+  @keyframes rise {
+    0%   { transform: translateY(0) translateX(0); opacity: 0; }
+    12%  { opacity: .8; }
+    88%  { opacity: .5; }
+    100% { transform: translateY(-260px) translateX(14px); opacity: 0; }
+  }
+
+  .stage {
+    position: absolute; inset: 0; z-index: 3;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding-bottom: 26px;
+  }
+
+  .wordmark {
+    width: 400px; height: auto;
+    opacity: 0; animation: emerge 1s ease-out .12s forwards;
+  }
+  .runes {
+    margin-top: 16px; opacity: 0;
+    animation: emerge .9s ease-out .5s forwards;
+  }
+  @keyframes emerge {
+    from { opacity: 0; transform: translateY(7px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .runes { animation-name: emergeRunes; }
+  @keyframes emergeRunes {
+    from { opacity: 0; transform: translateY(7px); }
+    to   { opacity: .58; transform: none; }
+  }
+
+  .foot {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+    padding: 0 22px 16px;
+  }
+  .bar {
+    height: 2px; border-radius: 2px; overflow: hidden;
+    background: rgba(150, 180, 230, .16); margin-bottom: 10px;
+  }
+  .bar i {
+    display: block; height: 100%; width: 38%;
+    background: linear-gradient(90deg, rgba(111, 208, 232, 0), #6FD0E8, rgba(111, 208, 232, 0));
+    animation: sweep 1.7s ease-in-out infinite;
+  }
+  @keyframes sweep {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(360%); }
+  }
+  .row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .status { color: #BCEAF4; font-size: 12px; letter-spacing: .02em; }
+  .brand { color: #6E769B; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .portal, .mist, .mote, .bar i { animation: none; }
+    .wordmark, .runes { animation-duration: .01s; }
+  }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div class="portal"></div>
+
+    <svg class="scene" viewBox="0 0 620 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <g fill="#39406F" opacity=".45">
+        <path d="M118 400V196c0-24-8-40-18-56 18 5 31 16 37 35 5-20 16-32 33-41-9 18-10 35-5 56 4 16 5 29 5 47v163z"/>
+        <path d="M506 400V208c0-28-10-45-23-63 22 6 38 19 45 42 6-24 19-38 40-48-11 22-12 41-6 65 5 18 6 34 6 56v140z"/>
+      </g>
+      <g fill="#22254A">
+        <path d="M0 400V112c28 6 51 21 64 45 11-35 27-58 56-75-18 33-21 63-10 99 8 28 11 52 11 85v134z"/>
+        <path d="M620 400V86c-39 6-70 24-88 55-13-41-34-69-70-89 23 40 27 77 13 122-10 34-12 63-12 102v124z"/>
+      </g>
+      <g stroke="#8FD9EC" stroke-width="1.8" stroke-linecap="round" opacity=".45">
+        <path d="M62 368l24-34M62 368l-4-38M62 368l30-14"/>
+        <path d="M560 356l-25-35M560 356l5-38M560 356l-31-16"/>
+      </g>
+      <g fill="#E294C6" opacity=".7">
+        <circle cx="88" cy="330" r="2.4"/><circle cx="80" cy="342" r="1.8"/>
+        <circle cx="532" cy="318" r="2.4"/><circle cx="541" cy="331" r="1.8"/>
+      </g>
+      <path d="M0 400v-42c62-14 111-5 155 11 48 18 92 23 151 12 61-12 116-18 176-5 48 10 90 11 138 3v21z" fill="#0A0B22"/>
+    </svg>
+
+    <div class="mist"></div>
+
+    <div class="stage">
+      <svg class="wordmark" viewBox="-26 -30 694 160" role="img" aria-label="YGGDRASIL">
+        <defs>
+          <!-- userSpaceOnUse обязателен: буква I — вертикальный штрих с нулевой
+               шириной bbox, в objectBoundingBox градиент для неё не вычисляется -->
+          <linearGradient id="carve" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#FFFFFF"/>
+            <stop offset="52%" stop-color="#DCF2FB"/>
+            <stop offset="100%" stop-color="#8FC4DE"/>
+          </linearGradient>
+          <filter id="halo" x="-30%" y="-40%" width="160%" height="190%">
+            <feGaussianBlur stdDeviation="8" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g fill="none" stroke="url(#carve)" stroke-width="9"
+           stroke-linecap="square" stroke-linejoin="miter" filter="url(#halo)">
+          <g transform="translate(0,0)"><path d="M0 0 L30 52 L60 0 M30 52 L30 100"/></g>
+          <g transform="translate(82,0)"><path d="M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54"/></g>
+          <g transform="translate(164,0)"><path d="M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54"/></g>
+          <g transform="translate(246,0)"><path d="M4 2 L4 98 M4 2 L34 2 L56 24 L56 76 L34 98 L4 98"/></g>
+          <g transform="translate(326,0)"><path d="M4 2 L4 98 M4 2 L34 2 L54 20 L54 38 L34 56 L4 56 M30 56 L56 98"/></g>
+          <g transform="translate(404,0)"><path d="M2 98 L30 2 L58 98 M14 64 L46 64"/></g>
+          <g transform="translate(486,0)"><path d="M50 18 L36 2 L16 2 L2 18 L2 32 L14 46 L38 54 L50 68 L50 82 L36 98 L16 98 L2 82"/></g>
+          <g transform="translate(560,0)"><path d="M6 2 L6 98"/></g>
+          <g transform="translate(594,0)"><path d="M4 2 L4 98 L46 98"/></g>
+        </g>
+      </svg>
+
+      <svg class="runes" width="212" height="32" viewBox="-4 -4 298 52" aria-hidden="true">
+        <g fill="none" stroke="#BCEAF4" stroke-width="3.4" stroke-linecap="square">
+          <g transform="translate(0,0)"><path d="M10 6 L10 34 M10 6 L18 2 M10 34 L2 38"/></g>
+          <g transform="translate(30,0)"><path d="M2 2 L26 38 M26 2 L2 38"/></g>
+          <g transform="translate(68,0)"><path d="M2 2 L26 38 M26 2 L2 38"/></g>
+          <g transform="translate(106,0)"><path d="M3 2 L3 38 M25 2 L25 38 M3 2 L25 38 M3 38 L25 2"/></g>
+          <g transform="translate(144,0)"><path d="M4 2 L4 38 M4 2 L20 10 L4 20 M4 20 L20 38"/></g>
+          <g transform="translate(178,0)"><path d="M4 2 L4 38 M4 6 L18 14 M4 20 L18 28"/></g>
+          <g transform="translate(210,0)"><path d="M18 2 L4 14 L18 26 L4 38"/></g>
+          <g transform="translate(242,0)"><path d="M5 2 L5 38"/></g>
+          <g transform="translate(262,0)"><path d="M5 2 L5 38 M5 2 L17 14"/></g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="foot">
+      <div class="bar"><i></i></div>
+      <div class="row">
+        <span class="status" id="status">Запуск…</span>
+        <span class="brand">Yggdrasil</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // Статус обновляет main-процесс через executeJavaScript
+  window.splashStatus = function (text) {
+    var el = document.getElementById("status");
+    if (el) el.textContent = text;
+  };
+
+  // Летящие искры: несколько CSS-анимированных точек
+  (function () {
+    var frame = document.querySelector(".frame");
+    for (var i = 0; i < 14; i++) {
+      var m = document.createElement("div");
+      var s = Math.random() * 1.8 + 0.8;
+      m.className = "mote";
+      m.style.width = m.style.height = s.toFixed(1) + "px";
+      m.style.left = (Math.random() * 100).toFixed(1) + "%";
+      m.style.top = (60 + Math.random() * 45).toFixed(1) + "%";
+      m.style.animationDuration = (7 + Math.random() * 9).toFixed(1) + "s";
+      m.style.animationDelay = (-Math.random() * 10).toFixed(1) + "s";
+      m.style.opacity = (Math.random() * 0.5 + 0.3).toFixed(2);
+      frame.appendChild(m);
+    }
+  })();
+</script>
+</body>
+</html>
