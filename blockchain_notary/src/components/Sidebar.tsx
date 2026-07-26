@@ -1,5 +1,5 @@
 import React from "react"
-import { Mark } from "./ui"
+import { Mark, Runes, Wordmark } from "./ui"
 
 export type ScreenId = "registry" | "document" | "audit" | "queue" | "evidence"
 
@@ -72,27 +72,32 @@ export function Sidebar({
   documentEnabled,
 }: SidebarProps) {
   return (
-    <aside className="flex w-[232px] shrink-0 flex-col border-r border-line bg-panel px-2.5 py-3.5">
-      <div className="flex items-center gap-2.5 px-2 pb-3.5 pt-1">
-        <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-accent text-on-accent">
-          <Mark size={15} />
-        </div>
-        <div className="min-w-0">
-          <div className="text-[14px] font-semibold tracking-[-0.01em]">Yggdrasil</div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted">
-            <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? "bg-ok" : "bg-faint"}`}
-            />
-            {connected && blockNumber !== null ? (
-              <span className="num truncate">блок {blockNumber.toLocaleString("ru-RU")}</span>
-            ) : (
-              <span className="truncate">{netStatus}</span>
-            )}
+    <aside className="relative flex w-[232px] shrink-0 flex-col border-r border-line bg-panel px-2.5 py-3.5">
+      {/* Свет разлома за брендовым блоком — единственное место, где мгла
+          Иггдрасиля попадает в рабочий интерфейс */}
+      <div className="glow pointer-events-none absolute inset-x-0 top-0 h-40" />
+
+      <div className="relative px-2 pb-4 pt-1">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-accent text-on-accent">
+            <Mark size={15} />
           </div>
+          <Wordmark width={116} className="text-ok" />
+        </div>
+
+        <Runes width={84} className="ml-[36px] mt-2 text-faint opacity-70" />
+
+        <div className="ml-[36px] mt-2 flex items-center gap-1.5 text-[11px] text-muted">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? "bg-ok" : "bg-faint"}`} />
+          {connected && blockNumber !== null ? (
+            <span className="num truncate">блок {blockNumber.toLocaleString("ru-RU")}</span>
+          ) : (
+            <span className="truncate">{netStatus}</span>
+          )}
         </div>
       </div>
 
-      <nav className="flex flex-col gap-px" aria-label="Разделы">
+      <nav className="relative flex flex-col gap-px" aria-label="Разделы">
         {NAV.map((item) => {
           const active = screen === item.id
           const disabled = item.id === "document" && !documentEnabled
@@ -126,7 +131,7 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className="mt-auto space-y-2 border-t border-line px-2 pt-2.5">
+      <div className="relative mt-auto space-y-2 border-t border-line px-2 pt-2.5">
         <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-faint">
           Сеть
         </div>

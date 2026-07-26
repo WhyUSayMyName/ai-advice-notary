@@ -30,6 +30,7 @@ export default {
         "info-bg": "var(--info-bg)",
         err: "var(--err)",
         "err-bg": "var(--err-bg)",
+        blossom: "var(--blossom)",
         "row-hover": "var(--row-hover)",
       },
     },

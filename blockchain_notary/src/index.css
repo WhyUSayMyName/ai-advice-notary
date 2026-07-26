@@ -3,57 +3,75 @@
 @tailwind utilities;
 
 /*
- * Дизайн-токены приложения (язык Linear). Тема переключается атрибутом
- * data-theme на <html>; значения по умолчанию — тёмные, как в макете.
+ * Дизайн-токены приложения. Основа — плотность и типографика Linear,
+ * цвет — мир Иггдрасиля: глубокая сине-фиолетовая мгла вместо нейтрального
+ * графита, ледяной Frost как цвет доказанной неизменности.
+ * Тема переключается атрибутом data-theme на <html>.
  */
 :root {
-  --bg: #08090b;
-  --panel: #101114;
-  --panel2: #17181c;
-  --border: rgba(255, 255, 255, 0.075);
-  --border2: rgba(255, 255, 255, 0.14);
-  --text: #f7f8f8;
-  --muted: #9ca0a8;
-  --faint: #62666e;
-  --accent: #5e6ad2;
-  --accent-hi: #6e79e0;
+  --bg: #090a1c;
+  --panel: #0f1128;
+  --panel2: #171a38;
+  --border: rgba(150, 170, 235, 0.1);
+  --border2: rgba(150, 170, 235, 0.2);
+  --text: #edeffa;
+  --muted: #9aa0c4;
+  --faint: #646a94;
+  --accent: #6e79e0;
+  --accent-hi: #8b93ec;
   --on-accent: #ffffff;
-  --accent-bg: rgba(94, 106, 210, 0.16);
-  --ok: #4cb782;
-  --ok-bg: rgba(76, 183, 130, 0.13);
-  --warn: #fc9867;
-  --warn-bg: rgba(252, 120, 64, 0.13);
-  --info: #4ea7fc;
-  --info-bg: rgba(78, 167, 252, 0.13);
-  --err: #eb6a62;
-  --err-bg: rgba(235, 87, 87, 0.13);
-  --row-hover: rgba(255, 255, 255, 0.035);
+  --accent-bg: rgba(110, 121, 224, 0.16);
+  /* Frost — фирменный цвет заякоренности: лёд не тает, запись не переписывается */
+  --ok: #6fd0e8;
+  --ok-bg: rgba(111, 208, 232, 0.13);
+  --warn: #e8b24a;
+  --warn-bg: rgba(232, 178, 74, 0.13);
+  --info: #8b93ec;
+  --info-bg: rgba(139, 147, 236, 0.14);
+  --err: #e0655c;
+  --err-bg: rgba(224, 101, 92, 0.13);
+  --blossom: #e294c6;
+  --row-hover: rgba(160, 180, 255, 0.045);
+  /* Ореол портала — рассеянный свет за брендовыми элементами */
+  --glow: radial-gradient(
+    120% 70% at 50% 0%,
+    rgba(150, 220, 245, 0.16) 0%,
+    rgba(110, 121, 224, 0.09) 38%,
+    rgba(9, 10, 28, 0) 74%
+  );
 
   color-scheme: dark;
 }
 
 :root[data-theme="light"] {
-  --bg: #f9f9fb;
+  --bg: #f6f6fb;
   --panel: #ffffff;
-  --panel2: #f4f4f6;
-  --border: rgba(20, 21, 26, 0.09);
-  --border2: rgba(20, 21, 26, 0.16);
-  --text: #24252a;
-  --muted: #6b6f76;
-  --faint: #9b9ea5;
-  --accent: #5e6ad2;
-  --accent-hi: #4f5acb;
+  --panel2: #f0f1f8;
+  --border: rgba(30, 35, 82, 0.1);
+  --border2: rgba(30, 35, 82, 0.18);
+  --text: #1b1e3d;
+  --muted: #5c6288;
+  --faint: #8e93b4;
+  --accent: #4f5acb;
+  --accent-hi: #3a44a8;
   --on-accent: #ffffff;
   --accent-bg: rgba(94, 106, 210, 0.1);
-  --ok: #1c8c5e;
-  --ok-bg: rgba(38, 155, 105, 0.11);
-  --warn: #b26205;
-  --warn-bg: rgba(252, 120, 64, 0.12);
-  --info: #1d74c4;
-  --info-bg: rgba(78, 167, 252, 0.12);
-  --err: #c33f38;
-  --err-bg: rgba(235, 87, 87, 0.11);
-  --row-hover: rgba(20, 21, 26, 0.033);
+  --ok: #0f7791;
+  --ok-bg: rgba(111, 208, 232, 0.2);
+  --warn: #9a6a0b;
+  --warn-bg: rgba(232, 178, 74, 0.2);
+  --info: #3a44a8;
+  --info-bg: rgba(94, 106, 210, 0.12);
+  --err: #b3382f;
+  --err-bg: rgba(224, 101, 92, 0.13);
+  --blossom: #b45b90;
+  --row-hover: rgba(30, 35, 82, 0.035);
+  --glow: radial-gradient(
+    120% 70% at 50% 0%,
+    rgba(120, 200, 230, 0.16) 0%,
+    rgba(94, 106, 210, 0.08) 40%,
+    rgba(246, 246, 251, 0) 76%
+  );
 
   color-scheme: light;
 }
@@ -78,7 +96,6 @@ body {
   overflow: hidden;
 }
 
-/* Хеши и адреса — везде моноширинные */
 .mono {
   font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
   font-size: 12px;
@@ -89,7 +106,11 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Тонкие полосы прокрутки, чтобы не спорили с плотной вёрсткой */
+/** Рассеянный свет разлома — фон брендовых зон */
+.glow {
+  background-image: var(--glow);
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border2) transparent;

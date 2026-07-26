@@ -1,4 +1,14 @@
-import { Card, Chip, EmptyState, Pill, Stat, short, formatTime } from "../components/ui"
+import {
+  Card,
+  Chip,
+  EmptyState,
+  Pill,
+  Stat,
+  short,
+  formatTime,
+  fileDir,
+  fileName,
+} from "../components/ui"
 
 export const AUDIT_LABEL: Record<AuditStatus, string> = {
   ON_CHAIN_OK: "Заякорен",
@@ -73,9 +83,15 @@ export function RegistryScreen({
                       onClick={() => onOpen(a)}
                       className="cursor-pointer border-b border-line last:border-0 hover:bg-row-hover"
                     >
-                      <td className="px-3.5 py-2.5">
-                        <div className="font-medium">{a.display_name}</div>
-                        <div className="truncate text-[11.5px] text-muted">{a.file_path}</div>
+                      <td className="max-w-[420px] px-3.5 py-2.5">
+                        <div className="truncate font-medium">
+                          {a.display_name && a.display_name !== a.file_path
+                            ? a.display_name
+                            : fileName(a.file_path)}
+                        </div>
+                        <div className="truncate text-[11.5px] text-muted" title={a.file_path}>
+                          {fileDir(a.file_path)}
+                        </div>
                       </td>
                       <td className="mono px-3.5 py-2.5 text-faint">{short(a.hash)}</td>
                       <td className="num px-3.5 py-2.5">v{a.version}</td>
