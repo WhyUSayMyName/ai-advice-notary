@@ -1,87 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
-
-type ArtifactRecord = {
-  id: number
-  artifact_id: string
-  display_name: string
-  file_path: string
-  hash: string
-  version: number
-  previous_hash: string | null
-  created_at: number
-  blockchain_tx: string | null
-  notarized: number
-}
-
-type AuditStatus =
-  | "LOCAL_ONLY"
-  | "ON_CHAIN_OK"
-  | "MISSING_FILE"
-  | "HASH_MISMATCH"
-  | "ON_CHAIN_MISSING"
-
-type AuditResult = {
-  id: number
-  artifact_id: string
-  file_path: string
-  stored_hash: string
-  current_hash: string | null
-  blockchain_tx: string | null
-  notarized: number
-  created_at: number
-  status: AuditStatus
-  author?: string
-  timestamp?: number
-}
-
-type VersionChainStatus =
-  | "OK"
-  | "BROKEN_LINK"
-  | "MISSING_PREVIOUS_HASH"
-  | "ROOT_VERSION_INVALID"
-
-type VersionChainItem = {
-  id: number
-  artifact_id: string
-  display_name: string
-  version: number
-  hash: string
-  previous_hash: string | null
-  status: VersionChainStatus
-  details: string
-}
-
-type VersionChainReport = {
-  artifact_id: string
-  display_name: string
-  ok: boolean
-  items: VersionChainItem[]
-}
-
-function short(s: string, n = 10) {
-  if (!s) return s
-  if (s.length <= n * 2 + 3) return s
-  return `${s.slice(0, n)}…${s.slice(-n)}`
-}
-
-function renderAuditStatus(status?: AuditStatus) {
-  switch (status) {
-    case "ON_CHAIN_OK":
-      return <span className="font-medium text-green-700">On-chain OK</span>
-    case "LOCAL_ONLY":
-      return <span className="font-medium text-amber-700">Local only</span>
-    case "MISSING_FILE":
-      return <span className="font-medium text-red-700">Missing file</span>
-    case "HASH_MISMATCH":
-      return <span className="font-medium text-red-700">Hash mismatch</span>
-    case "ON_CHAIN_MISSING":
-      return <span className="font-medium text-orange-700">On-chain missing</span>
-    default:
-      return <span className="text-zinc-500">—</span>
-  }
-}
+import { Sidebar, type ScreenId } from "./components/Sidebar"
+import { Screen } from "./components/Screen"
+import { Button, short } from "./components/ui"
+import { RegistryScreen } from "./screens/RegistryScreen"
+import { DocumentScreen } from "./screens/DocumentScreen"
+import { AuditScreen } from "./screens/AuditScreen"
+import { QueueScreen } from "./screens/QueueScreen"
+import { EvidenceScreen } from "./screens/EvidenceScreen"
 
 export default function App() {
+  const [screen, setScreen] = useState<ScreenId>("registry")
+  const [theme, setTheme] = useState<"dark" | "light">("dark")
+  const [logsOpen, setLogsOpen] = useState(false)
+
   const [rpcUrl, setRpcUrl] = useState("http://127.0.0.1:8545")
   const [netStatus, setNetStatus] = useState("Отключено")
   const [chainId, setChainId] = useState<number | null>(null)
@@ -96,29 +27,43 @@ export default function App() {
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
   const [auditResults, setAuditResults] = useState<AuditResult[]>([])
   const [chainReports, setChainReports] = useState<VersionChainReport[]>([])
+  const [queue, setQueue] = useState<AnchorQueueItem[]>([])
 
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactRecord | null>(null)
   const [artifactHistory, setArtifactHistory] = useState<ArtifactRecord[]>([])
 
   const [logs, setLogs] = useState<string[]>([])
   const log = (msg: string) =>
-    setLogs((l) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...l])
+    setLogs((l) => [`[${new Date().toLocaleTimeString("ru-RU")}] ${msg}`, ...l].slice(0, 300))
 
-  const canCheck = hashHex.startsWith("0x") && hashHex.length === 66
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
 
-  const tsHuman = useMemo(() => {
-    if (!record?.timestamp) return null
-    return new Date(record.timestamp * 1000).toLocaleString()
-  }, [record])
+  const auditMap = useMemo(() => new Map(auditResults.map((r) => [r.id, r])), [auditResults])
 
-  const auditMap = useMemo(() => {
-    return new Map(auditResults.map((r) => [r.id, r]))
-  }, [auditResults])
+  const currentReport = useMemo(
+    () => chainReports.find((r) => r.artifact_id === selectedArtifact?.artifact_id),
+    [chainReports, selectedArtifact]
+  )
+
+  const pendingCount = useMemo(
+    () => queue.filter((q) => q.status === "pending" || q.status === "sent").length,
+    [queue]
+  )
+
+  const problemCount = useMemo(
+    () =>
+      auditResults.filter((r) =>
+        ["MISSING_FILE", "HASH_MISMATCH", "ON_CHAIN_MISSING"].includes(r.status)
+      ).length,
+    [auditResults]
+  )
 
   const loadArtifacts = useCallback(async () => {
     const res = await window.api.listArtifacts()
     if (!res.ok) {
-      log(`Ошибка загрузки истории: ${res.error}`)
+      log(`Ошибка загрузки реестра: ${res.error}`)
       return
     }
     setArtifacts(res.artifacts ?? [])
@@ -141,7 +86,15 @@ export default function App() {
       return
     }
     setChainReports(res.reports ?? [])
-    log(`Проверка цепочек завершена, документов: ${res.reports?.length ?? 0}`)
+  }, [])
+
+  const loadQueue = useCallback(async () => {
+    const res = await window.api.listAnchorQueue()
+    if (!res.ok) {
+      log(`Ошибка загрузки очереди: ${res.error}`)
+      return
+    }
+    setQueue(res.queue ?? [])
   }, [])
 
   const loadArtifactHistory = useCallback(async (artifactId: string) => {
@@ -157,208 +110,95 @@ export default function App() {
     void loadArtifacts()
     void runAudit()
     void inspectChains()
-  }, [loadArtifacts, runAudit, inspectChains])
+    void loadQueue()
+  }, [loadArtifacts, runAudit, inspectChains, loadQueue])
 
   // События anchor-очереди: живой статус фиксаций из main-процесса
   useEffect(() => {
     const unsubscribe = window.api.onAnchorUpdated((event) => {
-      const shortHash = short(event.item.hash)
+      const h = short(event.item.hash)
       switch (event.type) {
         case "queued":
-          log(`Очередь: ${shortHash} поставлен в очередь фиксации`)
+          log(`Очередь: ${h} поставлен в очередь фиксации`)
           break
         case "sent":
-          log(`Очередь: ${shortHash} — транзакция отправлена (${short(event.item.tx_hash ?? "")})`)
+          log(`Очередь: ${h} — транзакция отправлена (${short(event.item.tx_hash ?? "")})`)
           break
         case "confirmed":
-          log(`Очередь: ${shortHash} — подтверждено ✅ tx=${short(event.item.tx_hash ?? "")}`)
-          setTxHash((current) => current || (event.item.tx_hash ?? ""))
+          log(`Очередь: ${h} — подтверждено, tx ${short(event.item.tx_hash ?? "")}`)
+          setTxHash((cur) => cur || (event.item.tx_hash ?? ""))
           void loadArtifacts()
           void runAudit()
           break
         case "recovered":
-          log(`Очередь: ${shortHash} — фиксация подтверждена после перезапуска ✅`)
+          log(`Очередь: ${h} — фиксация подтверждена после перезапуска`)
           void loadArtifacts()
           void runAudit()
           break
         case "retry":
-          log(
-            `Очередь: ${shortHash} — попытка ${event.item.attempts} не удалась, повтор позже (${event.item.last_error ?? ""})`
-          )
+          log(`Очередь: ${h} — попытка ${event.item.attempts} не удалась, повтор позже`)
           break
         case "failed":
-          log(
-            `Очередь: ${shortHash} — фиксация НЕ выполнена после ${event.item.attempts} попыток: ${event.item.last_error ?? ""}`
-          )
+          log(`Очередь: ${h} — НЕ выполнено после ${event.item.attempts} попыток`)
           break
       }
+      void loadQueue()
     })
     return unsubscribe
-  }, [loadArtifacts, runAudit])
+  }, [loadArtifacts, runAudit, loadQueue])
+
+  const refreshAll = useCallback(async () => {
+    await loadArtifacts()
+    await runAudit()
+    await inspectChains()
+    await loadQueue()
+    if (selectedArtifact) await loadArtifactHistory(selectedArtifact.artifact_id)
+  }, [loadArtifacts, runAudit, inspectChains, loadQueue, loadArtifactHistory, selectedArtifact])
 
   const connect = async () => {
     log(`Подключение к ${rpcUrl}`)
     setNetStatus("Подключение…")
 
     const res = await window.api.connectRpc(rpcUrl)
-
     if (res.ok) {
       setChainId(res.chainId ?? null)
       setBlockNumber(res.blockNumber ?? null)
       setNetStatus("Подключено")
-      log(`OK: chainId=${res.chainId}, block=${res.blockNumber}`)
+      log(`Сеть: chainId=${res.chainId}, блок ${res.blockNumber}`)
     } else {
       setNetStatus("Ошибка")
-      log(`Ошибка: ${res.error}`)
+      log(`Ошибка подключения: ${res.error}`)
     }
   }
 
   const checkHash = async (currentHash: string) => {
     if (!(currentHash.startsWith("0x") && currentHash.length === 66)) return
 
-    log(`Проверка в контракте: ${currentHash}`)
     const r = await window.api.notaryIsNotarized(currentHash, rpcUrl)
     if (!r.ok) {
-      log(`Ошибка: ${r.error}`)
+      log(`Ошибка проверки: ${r.error}`)
       return
     }
 
     const isN = Boolean(r.notarized)
     setNotarized(isN)
-    log(isN ? "Уже нотариально записан ✅" : "Ещё не записан ❌")
+    log(isN ? `Хеш ${short(currentHash)} найден в реестре` : `Хеш ${short(currentHash)} не заякорен`)
 
     if (isN) {
       const rr = await window.api.notaryGetRecord(currentHash, rpcUrl)
       if (rr.ok && rr.exists) {
         setRecord({ author: rr.author ?? "", timestamp: rr.timestamp ?? 0 })
-        log(`Record: author=${rr.author}, ts=${rr.timestamp}`)
       }
     } else {
       setRecord(null)
     }
   }
 
-  const check = async () => {
-    if (!canCheck) return
-    await checkHash(hashHex)
-  }
-
-  const refreshAll = async () => {
-    await loadArtifacts()
-    await runAudit()
-    await inspectChains()
-    if (selectedArtifact) {
-      await loadArtifactHistory(selectedArtifact.artifact_id)
-    }
-  }
-
-  const notarizeNow = async () => {
-    if (!filePath) {
-      log("Сначала выбери файл")
-      return
-    }
-
-    log(`Нотариат: регистрация и отправка TX для ${filePath}`)
-    const r = await window.api.notarizeArtifact(filePath, selectedArtifact?.display_name)
-
-    if (!r.ok) {
-      log(`Ошибка TX: ${r.error}`)
-      return
-    }
-
-    if (r.hash) setHashHex(r.hash)
-    setTxHash(r.txHash ?? "")
-
-    if (r.alreadyNotarized) {
-      log("Файл уже был нотариально записан ранее")
-      await checkHash(r.hash ?? hashHex)
-    } else if (r.queued) {
-      log("Фиксация поставлена в очередь — подтверждение придёт автоматически")
-    }
-
-    await refreshAll()
-  }
-
-  const notarizeSelectedVersion = async () => {
-    if (!selectedArtifact) {
-      log("Сначала выбери документ из истории")
-      return
-    }
-    if (!filePath) {
-      log("Сначала выбери файл новой версии")
-      return
-    }
-
-    log(`Нотариат новой версии для ${selectedArtifact.display_name}`)
-    const r = await window.api.notarizeArtifactVersion(
-      selectedArtifact.artifact_id,
-      filePath,
-      selectedArtifact.display_name
-    )
-
-    if (!r.ok) {
-      log(`Ошибка TX версии: ${r.error}`)
-      return
-    }
-
-    if (r.hash) setHashHex(r.hash)
-    setTxHash(r.txHash ?? "")
-
-    if (r.unchanged) {
-      log("Файл не изменился с последней версии — новая версия не создавалась")
-    }
-    if (r.alreadyNotarized) {
-      log("Эта версия уже была нотариально записана")
-      await checkHash(r.hash ?? hashHex)
-    } else if (r.queued) {
-      log("Фиксация версии поставлена в очередь — подтверждение придёт автоматически")
-    }
-
-    await refreshAll()
-  }
-
-  const exportEvidence = async () => {
-    log("Экспорт пакета доказательств…")
-    const res = await window.api.exportEvidence(rpcUrl)
-
-    if (res.ok) {
-      log(`Пакет доказательств сохранён: ${res.filePath} (записей: ${res.artifacts})`)
-      log("Передайте аудитору: этот JSON + документы + verifier-cli из репозитория")
-    } else if (res.canceled) {
-      log("Экспорт отменён")
-    } else {
-      log(`Ошибка экспорта: ${res.error}`)
-    }
-  }
-
-  const savePdf = async () => {
-    if (!filePath || !hashHex || !record || !txHash) {
-      log("Для PDF нужны: файл, hash, record (author/timestamp) и txHash")
-      return
-    }
-
-    log("Сохранение PDF…")
-    const res = await window.api.saveCertificatePdf({
-      filePath,
-      hashHex,
-      rpcUrl,
-      author: record.author,
-      timestamp: record.timestamp,
-      txHash,
-    })
-
-    if (res.ok) log(`PDF сохранён: ${res.filePath}`)
-    else if (res.canceled) log("Сохранение отменено")
-    else log(`Ошибка PDF: ${res.error}`)
-  }
-
   const pickFile = async () => {
-    log("Выбор файла…")
     setTxHash("")
-
     const res = await window.api.pickAndHash()
     if (!res.ok) {
-      if (res.canceled) log("Отменено пользователем")
+      if (res.canceled) log("Выбор файла отменён")
       else log(`Ошибка выбора файла: ${res.error}`)
       return
     }
@@ -375,50 +215,11 @@ export default function App() {
     log(`SHA-256: ${nextHash}`)
 
     const reg = await window.api.registerArtifact(nextFilePath, selectedArtifact?.display_name)
-    if (!reg.ok) {
-      log(`Ошибка локального сохранения: ${reg.error}`)
-    } else {
-      log("Файл сохранён в локальном реестре")
-    }
+    if (!reg.ok) log(`Ошибка локального сохранения: ${reg.error}`)
+    else log("Файл сохранён в локальном реестре")
 
     await refreshAll()
     await checkHash(nextHash)
-  }
-
-  const createVersionFromCurrentFile = async () => {
-    if (!selectedArtifact) {
-      log("Сначала выбери документ в истории")
-      return
-    }
-    if (!filePath) {
-      log("Сначала выбери файл")
-      return
-    }
-
-    log(`Создание новой версии для ${selectedArtifact.display_name}`)
-    const res = await window.api.createArtifactVersion(
-      selectedArtifact.artifact_id,
-      filePath,
-      selectedArtifact.display_name
-    )
-
-    if (!res.ok) {
-      log(`Ошибка создания версии: ${res.error}`)
-      return
-    }
-
-    if (res.hash) setHashHex(res.hash)
-    if (res.unchanged) {
-      log("Файл не изменился с последней версии — новая версия не создавалась")
-    } else {
-      log(`Новая версия сохранена: ${res.hash}`)
-    }
-    await refreshAll()
-    await checkHash(res.hash ?? hashHex)
-  }
-
-  const handleDragOver = (ev: React.DragEvent<HTMLDivElement>) => {
-    ev.preventDefault()
   }
 
   const handleDrop = async (ev: React.DragEvent<HTMLDivElement>) => {
@@ -427,22 +228,19 @@ export default function App() {
     if (!f) return
 
     type ElectronFile = File & { path?: string }
-    const filePathDropped = (f as ElectronFile).path
-
-    if (!filePathDropped) {
-      log("Не удалось получить путь файла (drop)")
+    const dropped = (f as ElectronFile).path
+    if (!dropped) {
+      log("Не удалось получить путь файла")
       return
     }
 
-    log(`Drop: ${filePathDropped}`)
-
-    const res = await window.api.hashPath(filePathDropped)
+    const res = await window.api.hashPath(dropped)
     if (!res.ok) {
-      log(`Ошибка hashPath: ${res.error}`)
+      log(`Ошибка хеширования: ${res.error}`)
       return
     }
 
-    const nextFilePath = res.filePath ?? filePathDropped
+    const nextFilePath = res.filePath ?? dropped
     const nextHash = res.hashHex ?? ""
 
     setFilePath(nextFilePath)
@@ -451,28 +249,151 @@ export default function App() {
     setRecord(null)
     setTxHash("")
 
+    log(`Файл: ${nextFilePath}`)
     log(`SHA-256: ${nextHash}`)
 
     const reg = await window.api.registerArtifact(nextFilePath, selectedArtifact?.display_name)
-    if (!reg.ok) {
-      log(`Ошибка локального сохранения: ${reg.error}`)
-    } else {
-      log("Файл сохранён в локальном реестре")
-    }
+    if (!reg.ok) log(`Ошибка локального сохранения: ${reg.error}`)
 
     await refreshAll()
     await checkHash(nextHash)
   }
 
-  const openArtifactFromHistory = async (artifact: ArtifactRecord) => {
+  const notarizeNow = async () => {
+    if (!filePath) {
+      log("Сначала выберите файл")
+      return
+    }
+
+    log(`Нотаризация: ${filePath}`)
+    const r = await window.api.notarizeArtifact(filePath, selectedArtifact?.display_name)
+    if (!r.ok) {
+      log(`Ошибка нотаризации: ${r.error}`)
+      return
+    }
+
+    if (r.hash) setHashHex(r.hash)
+    setTxHash(r.txHash ?? "")
+
+    if (r.alreadyNotarized) {
+      log("Файл уже был зафиксирован ранее")
+      await checkHash(r.hash ?? hashHex)
+    } else if (r.queued) {
+      log("Фиксация поставлена в очередь — подтверждение придёт автоматически")
+    }
+
+    await refreshAll()
+  }
+
+  const createVersionFromCurrentFile = async () => {
+    if (!selectedArtifact) {
+      log("Сначала откройте документ в реестре")
+      return
+    }
+    if (!filePath) {
+      log("Сначала выберите файл новой версии")
+      return
+    }
+
+    const res = await window.api.createArtifactVersion(
+      selectedArtifact.artifact_id,
+      filePath,
+      selectedArtifact.display_name
+    )
+    if (!res.ok) {
+      log(`Ошибка создания версии: ${res.error}`)
+      return
+    }
+
+    if (res.hash) setHashHex(res.hash)
+    log(
+      res.unchanged
+        ? "Файл не изменился с последней версии — новая версия не создавалась"
+        : `Новая версия сохранена: ${short(res.hash ?? "")}`
+    )
+
+    await refreshAll()
+    await checkHash(res.hash ?? hashHex)
+  }
+
+  const notarizeSelectedVersion = async () => {
+    if (!selectedArtifact) {
+      log("Сначала откройте документ в реестре")
+      return
+    }
+    if (!filePath) {
+      log("Сначала выберите файл новой версии")
+      return
+    }
+
+    const r = await window.api.notarizeArtifactVersion(
+      selectedArtifact.artifact_id,
+      filePath,
+      selectedArtifact.display_name
+    )
+    if (!r.ok) {
+      log(`Ошибка нотаризации версии: ${r.error}`)
+      return
+    }
+
+    if (r.hash) setHashHex(r.hash)
+    setTxHash(r.txHash ?? "")
+
+    if (r.unchanged) log("Файл не изменился с последней версии — новая версия не создавалась")
+    if (r.alreadyNotarized) {
+      log("Эта версия уже была зафиксирована")
+      await checkHash(r.hash ?? hashHex)
+    } else if (r.queued) {
+      log("Фиксация версии поставлена в очередь")
+    }
+
+    await refreshAll()
+  }
+
+  const savePdf = async () => {
+    if (!filePath || !hashHex || !record || !txHash) {
+      log("Для сертификата нужны: файл, хеш, подтверждённая запись в реестре и транзакция")
+      return
+    }
+
+    const res = await window.api.saveCertificatePdf({
+      filePath,
+      hashHex,
+      rpcUrl,
+      author: record.author,
+      timestamp: record.timestamp,
+      txHash,
+    })
+
+    if (res.ok) log(`Сертификат сохранён: ${res.filePath}`)
+    else if (res.canceled) log("Сохранение отменено")
+    else log(`Ошибка сертификата: ${res.error}`)
+  }
+
+  const exportEvidence = async () => {
+    log("Экспорт пакета доказательств…")
+    const res = await window.api.exportEvidence(rpcUrl)
+
+    if (res.ok) {
+      log(`Пакет сохранён: ${res.filePath} (записей: ${res.artifacts})`)
+      log("Передайте аудитору: этот файл + документы + verifier-cli из репозитория")
+    } else if (res.canceled) {
+      log("Экспорт отменён")
+    } else {
+      log(`Ошибка экспорта: ${res.error}`)
+    }
+  }
+
+  const openArtifact = async (artifact: ArtifactRecord) => {
     setSelectedArtifact(artifact)
     setFilePath(artifact.file_path)
     setHashHex(artifact.hash)
     setTxHash(artifact.blockchain_tx ?? "")
     setNotarized(Boolean(artifact.notarized))
     setRecord(null)
+    setScreen("document")
 
-    log(`Выбран документ: ${artifact.display_name} v${artifact.version}`)
+    log(`Открыт документ: ${artifact.display_name} v${artifact.version}`)
 
     await loadArtifactHistory(artifact.artifact_id)
     await checkHash(artifact.hash)
@@ -485,348 +406,188 @@ export default function App() {
     setNotarized(Boolean(artifact.notarized))
     setRecord(null)
 
-    log(`Выбрана версия v${artifact.version}: ${artifact.file_path}`)
+    log(`Открыта версия v${artifact.version}`)
     await checkHash(artifact.hash)
   }
 
+  const themeButton = (
+    <Button
+      variant="ghost"
+      onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+      aria-label="Переключить тему"
+      title="Переключить тему"
+    >
+      {theme === "dark" ? "☾" : "☀"}
+    </Button>
+  )
+
+  const screens: Record<ScreenId, React.ReactNode> = {
+    registry: (
+      <Screen
+        title="Реестр документов"
+        subtitle={filePath ? `Выбран: ${filePath}` : "Перетащите файл в окно или выберите вручную"}
+        actions={
+          <>
+            <Button onClick={refreshAll}>Обновить</Button>
+            <Button onClick={notarizeNow} disabled={!filePath}>
+              Зафиксировать
+            </Button>
+            <Button variant="primary" onClick={pickFile}>
+              Выбрать файл
+            </Button>
+            {themeButton}
+          </>
+        }
+      >
+        <RegistryScreen
+          artifacts={artifacts}
+          auditMap={auditMap}
+          queuedCount={pendingCount}
+          onOpen={openArtifact}
+        />
+      </Screen>
+    ),
+
+    document: (
+      <Screen
+        breadcrumb={
+          <button className="text-accent-hi hover:underline" onClick={() => setScreen("registry")}>
+            Реестр
+          </button>
+        }
+        title={selectedArtifact?.display_name ?? "Документ"}
+        actions={
+          <>
+            <Button onClick={() => checkHash(hashHex)} disabled={!hashHex}>
+              Проверить
+            </Button>
+            <Button onClick={savePdf} disabled={!record || !txHash}>
+              Сертификат
+            </Button>
+            <Button onClick={createVersionFromCurrentFile} disabled={!selectedArtifact}>
+              Новая версия
+            </Button>
+            <Button variant="primary" onClick={notarizeSelectedVersion} disabled={!selectedArtifact}>
+              Зафиксировать версию
+            </Button>
+            {themeButton}
+          </>
+        }
+      >
+        <DocumentScreen
+          artifact={selectedArtifact}
+          history={artifactHistory}
+          report={currentReport}
+          liveNotarized={notarized}
+          record={record}
+          onOpenVersion={openVersion}
+        />
+      </Screen>
+    ),
+
+    audit: (
+      <Screen
+        title="Аудит целостности"
+        subtitle="Файлы ↔ локальный реестр ↔ внешний реестр"
+        actions={
+          <>
+            <Button variant="primary" onClick={runAudit}>
+              Запустить аудит
+            </Button>
+            {themeButton}
+          </>
+        }
+      >
+        <AuditScreen results={auditResults} />
+      </Screen>
+    ),
+
+    queue: (
+      <Screen
+        title="Очередь якорения"
+        subtitle="Фиксации переживают сбои: очередь хранится локально и дожимается воркером"
+        actions={
+          <>
+            <Button onClick={loadQueue}>Обновить</Button>
+            {themeButton}
+          </>
+        }
+      >
+        <QueueScreen queue={queue} />
+      </Screen>
+    ),
+
+    evidence: (
+      <Screen
+        title="Пакет доказательств"
+        subtitle="Аудитор проверяет всё сам — без доверия к этому приложению"
+        actions={
+          <>
+            <Button variant="primary" onClick={exportEvidence}>
+              Экспортировать
+            </Button>
+            {themeButton}
+          </>
+        }
+      >
+        <EvidenceScreen
+          artifacts={artifacts.length}
+          anchored={artifacts.filter((a) => a.notarized).length}
+          chainId={chainId}
+        />
+      </Screen>
+    ),
+  }
+
   return (
-    <div className="min-h-screen bg-zinc-50 p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-zinc-900">Blockchain Notary</h1>
-            <p className="text-sm text-zinc-600">
-              Файл → SHA-256 → Локальный реестр → Версии → Смарт-контракт
-            </p>
-          </div>
-          <div className="text-xs text-zinc-500">Hardhat chainId 31337</div>
-        </header>
+    <div
+      className="flex h-full w-full overflow-hidden bg-bg text-ink"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleDrop}
+    >
+      <Sidebar
+        screen={screen}
+        onScreen={setScreen}
+        counts={{ registry: artifacts.length, queue: pendingCount, audit: problemCount }}
+        connected={netStatus === "Подключено"}
+        netStatus={netStatus}
+        chainId={chainId}
+        blockNumber={blockNumber}
+        rpcUrl={rpcUrl}
+        onRpcUrl={setRpcUrl}
+        onConnect={connect}
+        documentEnabled={Boolean(selectedArtifact)}
+      />
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm font-medium text-zinc-900">RPC подключение</div>
-            <div className="mt-3 flex gap-3">
-              <input
-                className="flex-1 rounded-xl border border-zinc-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
-                value={rpcUrl}
-                onChange={(e) => setRpcUrl(e.target.value)}
-              />
-              <button
-                className="rounded-2xl bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-[0.99]"
-                onClick={connect}
-              >
-                Connect
-              </button>
-            </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {screens[screen]}
 
-            <div className="mt-4 text-sm text-zinc-800">
-              <div className="text-sm font-medium text-zinc-900">Статус сети</div>
-              <div className="mt-1 text-sm text-zinc-600">{netStatus}</div>
-              <div className="mt-3 space-y-1">
-                <div>Chain ID: {chainId ?? "—"}</div>
-                <div>Block number: {blockNumber ?? "—"}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm font-medium text-zinc-900">Логи</div>
-            <div className="mt-3 h-56 overflow-auto rounded-xl bg-zinc-100 p-2 font-mono text-xs text-zinc-900">
-              {logs.length === 0 ? (
-                <div className="text-zinc-500">Пока пусто…</div>
-              ) : (
-                logs.map((l, i) => <div key={i}>{l}</div>)
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-sm font-medium text-zinc-900">Нотариат</div>
-              <div className="text-sm text-zinc-600">Выбери файл или перетащи его сюда</div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={pickFile}
-                className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white"
-              >
-                Выбрать файл
-              </button>
-
-              <button
-                onClick={check}
-                disabled={!canCheck}
-                className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40"
-              >
-                Check
-              </button>
-
-              <button
-                onClick={notarizeNow}
-                disabled={!filePath}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-              >
-                Notarize
-              </button>
-
-              <button
-                onClick={createVersionFromCurrentFile}
-                disabled={!selectedArtifact || !filePath}
-                className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40"
-              >
-                New Version from File
-              </button>
-
-              <button
-                onClick={notarizeSelectedVersion}
-                disabled={!selectedArtifact || !filePath}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-              >
-                Notarize Version
-              </button>
-
-              <button
-                onClick={savePdf}
-                disabled={!record}
-                className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40"
-              >
-                Сохранить PDF
-              </button>
-            </div>
-          </div>
-
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            className="mt-4 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-700"
+        <div className="shrink-0 border-t border-line bg-panel">
+          <button
+            onClick={() => setLogsOpen((v) => !v)}
+            className="flex w-full items-center gap-2 px-5 py-1.5 text-[11.5px] text-muted hover:text-ink"
           >
-            Перетащи файл сюда или нажми “Выбрать файл”
-          </div>
+            <span className="font-semibold uppercase tracking-[0.08em]">Журнал</span>
+            {logs.length > 0 ? <span className="num text-faint">{logs.length}</span> : null}
+            <span className="mono ml-2 min-w-0 flex-1 truncate text-left text-faint">
+              {!logsOpen && logs[0] ? logs[0] : ""}
+            </span>
+            <span className="text-faint">{logsOpen ? "▾" : "▴"}</span>
+          </button>
 
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-2xl bg-zinc-50 p-4">
-              <div className="text-xs text-zinc-500">Файл</div>
-              <div className="mt-1 break-all text-sm text-zinc-900">{filePath || "—"}</div>
-
-              {selectedArtifact && (
-                <div className="mt-3 text-xs text-zinc-700">
-                  <div>Документ: {selectedArtifact.display_name}</div>
-                  <div>
-                    Artifact ID:{" "}
-                    <span className="font-mono">{short(selectedArtifact.artifact_id, 12)}</span>
-                  </div>
-                  <div>Текущая версия: v{selectedArtifact.version}</div>
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-2xl bg-zinc-50 p-4">
-              <div className="text-xs text-zinc-500">SHA-256 (bytes32)</div>
-              <div className="mt-1 break-all font-mono text-sm text-zinc-900">{hashHex || "—"}</div>
-
-              <div className="mt-2 text-xs text-zinc-600">
-                Статус:{" "}
-                {notarized === null ? (
-                  "—"
-                ) : notarized ? (
-                  <span className="font-medium text-green-700">Нотариально записан</span>
-                ) : (
-                  <span className="font-medium text-red-700">Не записан</span>
-                )}
-              </div>
-
-              {record && (
-                <div className="mt-2 text-xs text-zinc-700">
-                  <div>
-                    Автор: <span className="font-mono">{short(record.author)}</span>
-                  </div>
-                  <div>Время: {tsHuman}</div>
-                </div>
-              )}
-
-              {txHash && (
-                <div className="mt-2 text-xs text-zinc-700">
-                  TX: <span className="font-mono">{short(txHash, 14)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="xl:col-span-2 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium text-zinc-900">История документов</div>
-                <div className="text-sm text-zinc-600">Показываются последние версии</div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={loadArtifacts}
-                  className="rounded-xl border px-4 py-2 text-sm"
-                >
-                  Обновить
-                </button>
-                <button
-                  onClick={runAudit}
-                  className="rounded-xl border px-4 py-2 text-sm"
-                >
-                  Audit
-                </button>
-                <button
-                  onClick={inspectChains}
-                  className="rounded-xl border px-4 py-2 text-sm"
-                >
-                  Check Chains
-                </button>
-                <button
-                  onClick={exportEvidence}
-                  className="rounded-xl border px-4 py-2 text-sm"
-                >
-                  Экспорт доказательств
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 overflow-auto rounded-xl border border-zinc-200">
-              {artifacts.length === 0 ? (
-                <div className="p-4 text-sm text-zinc-500">Пока нет сохранённых документов</div>
+          {logsOpen ? (
+            <div className="mono max-h-[190px] overflow-auto border-t border-line px-5 py-2 text-[11.5px] leading-[1.8]">
+              {logs.length === 0 ? (
+                <div className="text-faint">Пока пусто</div>
               ) : (
-                <table className="min-w-full text-sm">
-                  <thead className="bg-zinc-50 text-left text-zinc-600">
-                    <tr>
-                      <th className="px-4 py-3">Документ</th>
-                      <th className="px-4 py-3">Версия</th>
-                      <th className="px-4 py-3">Хеш</th>
-                      <th className="px-4 py-3">Статус</th>
-                      <th className="px-4 py-3">TX</th>
-                      <th className="px-4 py-3">Создан</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {artifacts.map((a) => {
-                      const ar = auditMap.get(a.id)
-
-                      return (
-                        <tr
-                          key={a.id}
-                          className="cursor-pointer border-t border-zinc-200 hover:bg-zinc-50"
-                          onClick={() => void openArtifactFromHistory(a)}
-                        >
-                          <td className="px-4 py-3 text-zinc-900">{a.display_name}</td>
-                          <td className="px-4 py-3 text-zinc-700">v{a.version}</td>
-                          <td className="px-4 py-3 font-mono text-zinc-700">{short(a.hash, 12)}</td>
-                          <td className="px-4 py-3">{renderAuditStatus(ar?.status)}</td>
-                          <td className="px-4 py-3 font-mono text-zinc-700">
-                            {a.blockchain_tx ? short(a.blockchain_tx, 10) : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-zinc-700">
-                            {new Date(a.created_at).toLocaleString()}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {auditResults.length > 0 && (
-              <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-700">
-                <div className="font-medium text-zinc-900">Сводка аудита</div>
-                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                  <div>ON_CHAIN_OK: {auditResults.filter((r) => r.status === "ON_CHAIN_OK").length}</div>
-                  <div>LOCAL_ONLY: {auditResults.filter((r) => r.status === "LOCAL_ONLY").length}</div>
-                  <div>MISSING_FILE: {auditResults.filter((r) => r.status === "MISSING_FILE").length}</div>
-                  <div>HASH_MISMATCH: {auditResults.filter((r) => r.status === "HASH_MISMATCH").length}</div>
-                  <div>ON_CHAIN_MISSING: {auditResults.filter((r) => r.status === "ON_CHAIN_MISSING").length}</div>
-                </div>
-              </div>
-            )}
-
-            {chainReports.length > 0 && (
-              <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-700">
-                <div className="font-medium text-zinc-900">Проверка цепочек версий</div>
-                <div className="mt-2 space-y-2">
-                  {chainReports.map((report) => (
-                    <div
-                      key={report.artifact_id}
-                      className="rounded-lg border border-zinc-200 bg-white p-3"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium text-zinc-900">{report.display_name}</div>
-                        <div>
-                          {report.ok ? (
-                            <span className="font-medium text-green-700">Chain OK</span>
-                          ) : (
-                            <span className="font-medium text-red-700">Chain Broken</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-2 space-y-1 text-xs text-zinc-700">
-                        {report.items.map((item) => (
-                          <div key={item.id} className="flex items-center justify-between gap-4">
-                            <div>
-                              v{item.version} — <span className="font-mono">{short(item.hash, 10)}</span>
-                            </div>
-                            <div className={item.status === "OK" ? "text-green-700" : "text-red-700"}>
-                              {item.status}: {item.details}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="text-sm font-medium text-zinc-900">История версий</div>
-            <div className="text-sm text-zinc-600">
-              {selectedArtifact ? selectedArtifact.display_name : "Выбери документ из списка"}
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {artifactHistory.length === 0 ? (
-                <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
-                  Нет данных о версиях
-                </div>
-              ) : (
-                artifactHistory.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => void openVersion(v)}
-                    className="w-full rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left hover:bg-zinc-100"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium text-zinc-900">v{v.version}</div>
-                      <div className="text-xs text-zinc-500">
-                        {v.notarized ? "notarized" : "local"}
-                      </div>
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-700">{v.file_path}</div>
-                    <div className="mt-1 font-mono text-xs text-zinc-600">{short(v.hash, 14)}</div>
-                    {v.previous_hash && (
-                      <div className="mt-1 text-xs text-zinc-500">
-                        prev: <span className="font-mono">{short(v.previous_hash, 10)}</span>
-                      </div>
-                    )}
-                  </button>
+                logs.map((l, i) => (
+                  <div key={i} className="text-muted">
+                    {l}
+                  </div>
                 ))
               )}
             </div>
-          </div>
-        </div>
-
-        <div className="text-xs text-zinc-500">
-          Примечание: для записи нужен приватный ключ из Hardhat (Account #0) в{" "}
-          <span className="font-mono">blockchain_notary/.env</span>
+          ) : null}
         </div>
       </div>
     </div>

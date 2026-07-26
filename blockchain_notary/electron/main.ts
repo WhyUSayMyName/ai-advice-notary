@@ -161,8 +161,12 @@ ipcMain.handle("evidence:export", async (_e, rpcUrl?: string) => {
   }
 })
 
-/** Минимальное время показа заставки, чтобы она не мелькала на быстрых машинах */
-const SPLASH_MIN_MS = 1600
+/**
+ * Минимальное время показа заставки. Анимация проявления вордмарка и рун
+ * заканчивается около 1,4 с — даём собранной композиции постоять секунду,
+ * иначе она гаснет сразу после появления.
+ */
+const SPLASH_MIN_MS = 2400
 
 function createSplash() {
   splash = new BrowserWindow({
@@ -213,13 +217,21 @@ async function closeSplash() {
 
 function createWindow() {
   win = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 940,
+    minHeight: 600,
     // Показываем только после первой отрисовки — иначе видно белую вспышку
     show: false,
     backgroundColor: "#08090B",
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.mjs"),
     },
   })
+
+  // Системное меню (File/Edit/View…) в этом приложении не используется
+  win.setMenuBarVisibility(false)
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)

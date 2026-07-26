@@ -2,71 +2,113 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Дизайн-токены приложения (язык Linear). Тема переключается атрибутом
+ * data-theme на <html>; значения по умолчанию — тёмные, как в макете.
+ */
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  --bg: #08090b;
+  --panel: #101114;
+  --panel2: #17181c;
+  --border: rgba(255, 255, 255, 0.075);
+  --border2: rgba(255, 255, 255, 0.14);
+  --text: #f7f8f8;
+  --muted: #9ca0a8;
+  --faint: #62666e;
+  --accent: #5e6ad2;
+  --accent-hi: #6e79e0;
+  --on-accent: #ffffff;
+  --accent-bg: rgba(94, 106, 210, 0.16);
+  --ok: #4cb782;
+  --ok-bg: rgba(76, 183, 130, 0.13);
+  --warn: #fc9867;
+  --warn-bg: rgba(252, 120, 64, 0.13);
+  --info: #4ea7fc;
+  --info-bg: rgba(78, 167, 252, 0.13);
+  --err: #eb6a62;
+  --err-bg: rgba(235, 87, 87, 0.13);
+  --row-hover: rgba(255, 255, 255, 0.035);
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+:root[data-theme="light"] {
+  --bg: #f9f9fb;
+  --panel: #ffffff;
+  --panel2: #f4f4f6;
+  --border: rgba(20, 21, 26, 0.09);
+  --border2: rgba(20, 21, 26, 0.16);
+  --text: #24252a;
+  --muted: #6b6f76;
+  --faint: #9b9ea5;
+  --accent: #5e6ad2;
+  --accent-hi: #4f5acb;
+  --on-accent: #ffffff;
+  --accent-bg: rgba(94, 106, 210, 0.1);
+  --ok: #1c8c5e;
+  --ok-bg: rgba(38, 155, 105, 0.11);
+  --warn: #b26205;
+  --warn-bg: rgba(252, 120, 64, 0.12);
+  --info: #1d74c4;
+  --info-bg: rgba(78, 167, 252, 0.12);
+  --err: #c33f38;
+  --err-bg: rgba(235, 87, 87, 0.11);
+  --row-hover: rgba(20, 21, 26, 0.033);
+
+  color-scheme: light;
 }
-a:hover {
-  color: #535bf2;
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+/* Хеши и адреса — везде моноширинные */
+.mono {
+  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 
-button {
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Тонкие полосы прокрутки, чтобы не спорили с плотной вёрсткой */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border2);
   border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
