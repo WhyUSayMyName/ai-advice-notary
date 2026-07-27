@@ -1,0 +1,775 @@
+<title>Иггдрасиль — макет интерфейса</title>
+<style>
+  :root {
+    --bg: #F9F9FB;
+    --panel: #FFFFFF;
+    --panel2: #F4F4F6;
+    --border: rgba(20, 21, 26, .09);
+    --border2: rgba(20, 21, 26, .16);
+    --text: #24252A;
+    --muted: #6B6F76;
+    --faint: #9B9EA5;
+    --accent: #5E6AD2;
+    --accent-hi: #4F5ACB;
+    --on-accent: #FFFFFF;
+    --accent-bg: rgba(94, 106, 210, .10);
+    --ok: #1C8C5E;
+    --ok-bg: rgba(38, 155, 105, .11);
+    --warn: #B26205;
+    --warn-bg: rgba(252, 120, 64, .12);
+    --info: #1D74C4;
+    --info-bg: rgba(78, 167, 252, .12);
+    --err: #C33F38;
+    --err-bg: rgba(235, 87, 87, .11);
+    --row-hover: rgba(20, 21, 26, .033);
+    --shadow: 0 1px 2px rgba(15, 16, 20, .05), 0 8px 24px rgba(15, 16, 20, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #08090B;
+      --panel: #101114;
+      --panel2: #17181C;
+      --border: rgba(255, 255, 255, .075);
+      --border2: rgba(255, 255, 255, .14);
+      --text: #F7F8F8;
+      --muted: #9CA0A8;
+      --faint: #62666E;
+      --accent: #5E6AD2;
+      --accent-hi: #6E79E0;
+      --on-accent: #FFFFFF;
+      --accent-bg: rgba(94, 106, 210, .16);
+      --ok: #4CB782;
+      --ok-bg: rgba(76, 183, 130, .13);
+      --warn: #FC9867;
+      --warn-bg: rgba(252, 120, 64, .13);
+      --info: #4EA7FC;
+      --info-bg: rgba(78, 167, 252, .13);
+      --err: #EB6A62;
+      --err-bg: rgba(235, 87, 87, .13);
+      --row-hover: rgba(255, 255, 255, .035);
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 32px rgba(0,0,0,.42);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #08090B; --panel: #101114; --panel2: #17181C;
+    --border: rgba(255,255,255,.075); --border2: rgba(255,255,255,.14);
+    --text: #F7F8F8; --muted: #9CA0A8; --faint: #62666E;
+    --accent: #5E6AD2; --accent-hi: #6E79E0; --on-accent: #FFFFFF;
+    --accent-bg: rgba(94,106,210,.16);
+    --ok: #4CB782; --ok-bg: rgba(76,183,130,.13);
+    --warn: #FC9867; --warn-bg: rgba(252,120,64,.13);
+    --info: #4EA7FC; --info-bg: rgba(78,167,252,.13);
+    --err: #EB6A62; --err-bg: rgba(235,87,87,.13);
+    --row-hover: rgba(255,255,255,.035);
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 32px rgba(0,0,0,.42);
+  }
+  :root[data-theme="light"] {
+    --bg: #F9F9FB; --panel: #FFFFFF; --panel2: #F4F4F6;
+    --border: rgba(20,21,26,.09); --border2: rgba(20,21,26,.16);
+    --text: #24252A; --muted: #6B6F76; --faint: #9B9EA5;
+    --accent: #5E6AD2; --accent-hi: #4F5ACB; --on-accent: #FFFFFF;
+    --accent-bg: rgba(94,106,210,.10);
+    --ok: #1C8C5E; --ok-bg: rgba(38,155,105,.11);
+    --warn: #B26205; --warn-bg: rgba(252,120,64,.12);
+    --info: #1D74C4; --info-bg: rgba(78,167,252,.12);
+    --err: #C33F38; --err-bg: rgba(235,87,87,.11);
+    --row-hover: rgba(20,21,26,.033);
+    --shadow: 0 1px 2px rgba(15,16,20,.05), 0 8px 24px rgba(15,16,20,.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 400 13.5px/1.5 "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    letter-spacing: .01em;
+    padding: 24px 16px 48px;
+  }
+  .mono { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 12px; letter-spacing: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .note {
+    max-width: 1200px; margin: 0 auto 14px;
+    color: var(--muted); font-size: 12px;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .note b { color: var(--text); font-weight: 600; }
+
+  .frame {
+    max-width: 1200px; margin: 0 auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    display: grid; grid-template-columns: 232px 1fr;
+    min-height: 720px; overflow: hidden;
+  }
+
+  /* ---------- Sidebar ---------- */
+  .side {
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 14px 10px 14px;
+    background: var(--panel);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; }
+  .mark {
+    width: 26px; height: 26px; border-radius: 7px; flex: none;
+    background: var(--accent); color: var(--on-accent);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mark svg { width: 15px; height: 15px; }
+  .brand-name { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+  .brand-net { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .live { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+
+  .nav { display: flex; flex-direction: column; gap: 1px; }
+  .nav button {
+    all: unset; cursor: pointer;
+    display: flex; align-items: center; gap: 9px;
+    padding: 6px 10px; border-radius: 7px;
+    color: var(--muted); font-size: 13px; font-weight: 500;
+  }
+  .nav button:hover { background: var(--row-hover); color: var(--text); }
+  .nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .nav button.on { background: var(--accent-bg); color: var(--text); }
+  .nav button.on .nic { color: var(--accent-hi); }
+  .nic { width: 16px; height: 16px; flex: none; color: var(--faint); }
+  .nic svg { width: 16px; height: 16px; display: block; }
+  .cnt { margin-left: auto; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+  .side-sec { padding: 16px 10px 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
+  .side-foot { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid var(--border); display: grid; gap: 6px; }
+  .foot-row { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+  .foot-row .mono { font-size: 11px; color: var(--faint); }
+
+  /* ---------- Main ---------- */
+  .main { display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+  .top {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 20px; border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .top h1 { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+  .top .sub { color: var(--muted); font-size: 12px; margin-top: 1px; font-weight: 400; }
+  .top-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  .btn {
+    all: unset; cursor: pointer; border-radius: 7px;
+    padding: 5px 12px; font-size: 12.5px; font-weight: 500;
+    border: 1px solid var(--border2); color: var(--text);
+    background: var(--panel);
+  }
+  .btn:hover { background: var(--panel2); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn.primary {
+    background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+    box-shadow: 0 1px 2px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.12);
+  }
+  .btn.primary:hover { background: var(--accent-hi); }
+  .btn.ghost { border-color: transparent; background: none; color: var(--muted); }
+  .btn.ghost:hover { background: var(--row-hover); color: var(--text); }
+
+  .content { padding: 18px 20px 28px; display: grid; gap: 14px; align-content: start; }
+  .screen { display: none; }
+  .screen.on { display: grid; gap: 14px; }
+
+  /* ---------- Badges (починено: текст всегда внутри) ---------- */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 22px; padding: 0 9px; border-radius: 6px;
+    font-size: 11.5px; font-weight: 500; white-space: nowrap;
+    width: fit-content;
+  }
+  .pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.info { background: var(--info-bg); color: var(--info); }
+  .pill.err { background: var(--err-bg); color: var(--err); }
+  .pill.mut { background: var(--panel2); color: var(--muted); }
+  .pill.acc { background: var(--accent-bg); color: var(--accent-hi); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px;
+    white-space: nowrap; width: fit-content;
+  }
+
+  .kbd {
+    font-size: 10.5px; color: var(--faint);
+    border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 4px;
+    padding: 0 5px; line-height: 16px;
+  }
+
+  /* ---------- Stats ---------- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+    padding: 12px 14px 10px;
+  }
+  .stat .n { font-size: 22px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .stat .d { margin-top: 6px; }
+
+  /* ---------- Table ---------- */
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .search {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px;
+    color: var(--faint); background: var(--panel); font-size: 12.5px;
+  }
+  .search .kbd { margin-left: auto; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .tblwrap { overflow-x: auto; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th {
+    text-align: left; font-size: 11px; font-weight: 500;
+    color: var(--faint); padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tbl td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl tbody tr { cursor: pointer; }
+  .tbl tbody tr:hover { background: var(--row-hover); }
+  .doc-name { font-weight: 500; }
+  .doc-meta { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+  .hash { color: var(--faint); }
+
+  /* ---------- Doc detail ---------- */
+  .crumbs { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .crumbs a { color: var(--accent-hi); cursor: pointer; text-decoration: none; }
+  .crumbs a:hover { text-decoration: underline; }
+
+  .pad { padding: 14px 16px; display: grid; gap: 10px; align-content: start; }
+  .kv { display: grid; grid-template-columns: 130px 1fr; gap: 5px 14px; font-size: 12.5px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { overflow-wrap: anywhere; }
+
+  .sec-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+
+  .ver {
+    display: grid; grid-template-columns: 22px 1fr auto; gap: 0 12px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .ver:last-child { border-bottom: none; }
+  .rail { display: flex; flex-direction: column; align-items: center; }
+  .knot {
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid var(--accent); background: var(--panel);
+    flex: none; margin-top: 5px;
+  }
+  .knot.fill { background: var(--accent); }
+  .rail::after { content: ""; flex: 1; width: 1.5px; background: var(--border2); margin-top: 4px; }
+  .ver:last-child .rail::after, .chain-item:last-child .rail::after { display: none; }
+  .ver-t { font-weight: 500; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ver-d { color: var(--muted); font-size: 12px; margin-top: 3px; display: grid; gap: 2px; }
+  .ver-actions { display: flex; gap: 4px; align-items: flex-start; }
+
+  /* ---------- Audit ---------- */
+  .audit-sum { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .audit-row { display: grid; grid-template-columns: 3px 1fr auto; gap: 4px 14px; padding: 11px 14px 11px 0; border-bottom: 1px solid var(--border); }
+  .audit-row:last-child { border-bottom: none; }
+  .audit-row .stripe { background: transparent; border-radius: 2px; }
+  .audit-row.bad .stripe { background: var(--err); }
+  .audit-note { font-size: 12px; color: var(--muted); }
+  .audit-note.bad { color: var(--err); }
+  .audit-right { display: grid; gap: 6px; justify-items: end; align-content: start; }
+
+  /* ---------- Queue ---------- */
+  .q-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .q-row:last-child { border-bottom: none; }
+  .q-info { min-width: 0; }
+  .q-hash { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .q-sub { font-size: 11.5px; color: var(--muted); }
+  .q-right { margin-left: auto; display: flex; gap: 10px; align-items: center; flex: none; }
+
+  .batch-card {
+    background: linear-gradient(135deg, var(--accent-bg), transparent 60%), var(--panel);
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: 14px 16px; display: flex; gap: 22px; align-items: center; flex-wrap: wrap;
+  }
+  .batch-card .bl { font-size: 11px; color: var(--muted); }
+  .batch-card .bv { font-size: 15px; font-weight: 600; letter-spacing: -.01em; margin-top: 1px; }
+  .batch-card .bv.big { font-size: 20px; }
+
+  /* ---------- LLM ---------- */
+  .chain-item { display: grid; grid-template-columns: 22px 1fr; gap: 0 12px; }
+  .chain-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+    padding: 13px 15px; margin-bottom: 12px;
+  }
+  .chain-card.hi { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-bg); }
+  .chain-card .hd { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .chain-card .hd b { font-size: 13px; font-weight: 600; }
+  .msg { border-left: 2px solid var(--border2); padding: 3px 11px; margin: 7px 0; font-size: 12.5px; }
+  .msg .who { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }
+  .msg.ai { border-left-color: var(--accent); }
+  .why { font-size: 12.5px; color: var(--muted); max-width: 66ch; }
+
+  /* ---------- Evidence ---------- */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .codeblock {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 7px;
+    padding: 11px 13px; overflow-x: auto; font-size: 11.5px; line-height: 1.75;
+    white-space: pre;
+  }
+  .steps { display: grid; gap: 7px; font-size: 12.5px; counter-reset: s; padding: 0; list-style: none; }
+  .steps li { display: flex; gap: 9px; }
+  .steps li::before {
+    counter-increment: s; content: counter(s);
+    width: 18px; height: 18px; border-radius: 50%; flex: none;
+    background: var(--accent-bg); color: var(--accent-hi);
+    font-size: 10.5px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+    margin-top: 1px;
+  }
+
+  @media (max-width: 900px) {
+    .frame { grid-template-columns: 1fr; }
+    .side { flex-direction: row; align-items: center; overflow-x: auto; }
+    .nav { flex-direction: row; }
+    .side-foot, .side-sec { display: none; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .split { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .screen.on { animation: fade .15s ease; }
+    @keyframes fade { from { opacity: .5; transform: translateY(2px); } }
+  }
+</style>
+
+<p class="note">
+  <span><b>Иггдрасиль</b> · макет интерфейса в дизайн-языке Linear — кликабельный, данные демонстрационные</span>
+  <span>экраны — в меню слева · тема — ☾/☀</span>
+</p>
+
+<div class="frame">
+  <aside class="side">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="5.5" r="2.4"/>
+          <path d="M12 8v11.5M12 19.5c-3.8 0-6.8-2.6-7.5-6M12 19.5c3.8 0 6.8-2.6 7.5-6M8.6 5.5H15.4" opacity=".9"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Иггдрасиль</div>
+        <div class="brand-net"><span class="live" aria-hidden="true"></span>Sepolia · блок <span class="num">8 412 907</span></div>
+      </div>
+    </div>
+
+    <nav class="nav" aria-label="Разделы">
+      <button class="on" data-scr="registry">
+        <span class="nic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M5 6h6M5 8.5h6M5 11h3.5"/></svg></span>
+        Реестр<span class="cnt">14</span>
+      </button>
+      <button data-scr="audit">
+        <span class="nic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.8l5 2v3.7c0 3.2-2.1 5.6-5 6.7-2.9-1.1-5-3.5-5-6.7V3.8l5-2z"/><path d="M5.8 8l1.6 1.6L10.5 6.5"/></svg></span>
+        Аудит
+      </button>
+      <button data-scr="queue">
+        <span class="nic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7"/><circle cx="13" cy="11.5" r="1.6"/></svg></span>
+        Очередь<span class="cnt">3</span>
+      </button>
+      <button data-scr="llm">
+        <span class="nic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 3h10a1 1 0 011 1v6a1 1 0 01-1 1H8l-3 2.6V11H3a1 1 0 01-1-1V4a1 1 0 011-1z"/></svg></span>
+        ИИ-диалоги
+      </button>
+      <button data-scr="evidence">
+        <span class="nic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 1.8h5.5L13 5.3v8a1 1 0 01-1 1H4a1 1 0 01-1-1v-10a1 1 0 011-1z"/><path d="M9.5 1.8v3.5H13"/></svg></span>
+        Доказательства
+      </button>
+    </nav>
+
+    <div class="side-foot">
+      <div class="foot-row"><span>Контракт</span><span class="mono">0x5FbD…0aa3</span></div>
+      <div class="foot-row"><span>Воркер</span><span style="color: var(--ok)">активен</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ================= РЕЕСТР ================= -->
+    <section class="screen on" id="scr-registry">
+      <div class="top">
+        <div>
+          <h1>Реестр документов</h1>
+        </div>
+        <div class="top-actions">
+          <button class="btn">Новая версия</button>
+          <button class="btn primary">Зафиксировать файл</button>
+          <button class="btn ghost" data-theme-toggle aria-label="Переключить тему">☾</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="stats">
+          <div class="stat"><div class="n">14</div><div class="l">документов</div></div>
+          <div class="stat"><div class="n">11</div><div class="l">заякорено on-chain</div><div class="d"><span class="pill ok"><i></i>всё подтверждено</span></div></div>
+          <div class="stat"><div class="n">3</div><div class="l">в очереди</div><div class="d"><span class="pill warn"><i></i>батч через ~2 мин</span></div></div>
+          <div class="stat"><div class="n">2</div><div class="l">merkle-батча</div><div class="d"><span class="pill acc"><i></i>−98% газа</span></div></div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search">Поиск по имени или хешу… <span class="kbd">Ctrl K</span></div>
+          <button class="btn">Все статусы</button>
+        </div>
+
+        <div class="card tblwrap">
+          <table class="tbl">
+            <thead>
+              <tr><th>Документ</th><th>SHA-256</th><th>Версия</th><th>Статус</th><th>Фиксация</th></tr>
+            </thead>
+            <tbody>
+              <tr data-open="doc">
+                <td><div class="doc-name">Журнал ТБ — цех №4.pdf</div><div class="doc-meta">Журналы охраны труда</div></td>
+                <td class="mono hash">0x57ed…3a87</td>
+                <td class="num">v3</td>
+                <td><span class="pill ok"><i></i>Заякорен</span></td>
+                <td><div class="num" style="font-size:12.5px">08.07.2026 14:12</div><div class="doc-meta"><span class="chip">батч #12 · 100 док.</span></div></td>
+              </tr>
+              <tr data-open="doc">
+                <td><div class="doc-name">Акт испытаний фланцев DN50.docx</div><div class="doc-meta">Протоколы испытаний</div></td>
+                <td class="mono hash">0xca01…e438</td>
+                <td class="num">v1</td>
+                <td><span class="pill info"><i></i>Отправлено</span></td>
+                <td><div class="num" style="font-size:12.5px">сегодня 17:36</div><div class="doc-meta mono">tx 0xd4cb…f5da</div></td>
+              </tr>
+              <tr data-open="doc">
+                <td><div class="doc-name">Протокол осмотра крана КС-45.pdf</div><div class="doc-meta">Журналы охраны труда</div></td>
+                <td class="mono hash">0x94b2…11c0</td>
+                <td class="num">v2</td>
+                <td><span class="pill warn"><i></i>В очереди</span></td>
+                <td><div class="doc-meta">войдёт в ближайший батч</div></td>
+              </tr>
+              <tr data-open="doc">
+                <td><div class="doc-name">LLM-диалог: допуск фланца DN50</div><div class="doc-meta">ИИ-диалоги · claude-fable-5</div></td>
+                <td class="mono hash">0x7fe1…09ba</td>
+                <td class="num">v1</td>
+                <td><span class="pill ok"><i></i>Заякорен</span></td>
+                <td><div class="num" style="font-size:12.5px">08.07.2026 14:12</div><div class="doc-meta"><span class="chip">батч #12 · 100 док.</span></div></td>
+              </tr>
+              <tr data-open="doc">
+                <td><div class="doc-name">Регламент сварочных работ.docx</div><div class="doc-meta">Регламенты</div></td>
+                <td class="mono hash">0x2ac8…77d1</td>
+                <td class="num">v5</td>
+                <td><span class="pill mut"><i></i>Локальный</span></td>
+                <td><div class="doc-meta">не фиксировался</div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ДОКУМЕНТ ================= -->
+    <section class="screen" id="scr-doc">
+      <div class="top">
+        <div>
+          <div class="crumbs"><a data-scr-link="registry">Реестр</a> <span>›</span> <span>Журнал ТБ — цех №4.pdf</span></div>
+          <h1 style="margin-top:2px">Журнал ТБ — цех №4.pdf</h1>
+        </div>
+        <div class="top-actions">
+          <button class="btn">Проверить сейчас</button>
+          <button class="btn">Сертификат PDF</button>
+          <button class="btn primary">Новая версия</button>
+          <button class="btn ghost" data-theme-toggle aria-label="Переключить тему">☾</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="card pad">
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+            <span class="pill ok"><i></i>Заякорен</span>
+            <span class="chip">подтверждено внешним реестром</span>
+            <span class="chip">батч #12 · merkle proof · 7 шагов</span>
+          </div>
+          <dl class="kv">
+            <dt>SHA-256 (v3)</dt><dd class="mono">0x57ed247ea7003bc34be04e3ecbdfff03d3666ead5d04dd6aa6092643ea3c5a87</dd>
+            <dt>Транзакция</dt><dd class="mono">0x1f80c22e…9c41 · блок 8 411 302</dd>
+            <dt>Зафиксировано</dt><dd>08.07.2026 14:12 UTC · батч из 100 документов</dd>
+            <dt>Автор записи</dt><dd class="mono">0xf39F…2266</dd>
+          </dl>
+        </div>
+
+        <div>
+          <div class="sec-label" style="margin-bottom:8px">Цепочка версий</div>
+          <div class="card">
+            <div class="ver">
+              <div class="rail"><div class="knot fill"></div></div>
+              <div>
+                <div class="ver-t">v3 — текущая <span class="pill ok"><i></i>Заякорен</span></div>
+                <div class="ver-d">
+                  <span>08.07.2026 · инструктаж за июнь внесён, подписи 12 сотрудников</span>
+                  <span class="mono">hash 0x57ed…3a87 · prev 0x81aa…c4e2</span>
+                </div>
+              </div>
+              <div class="ver-actions"><button class="btn ghost">Proof</button><button class="btn ghost">Открыть</button></div>
+            </div>
+            <div class="ver">
+              <div class="rail"><div class="knot"></div></div>
+              <div>
+                <div class="ver-t">v2 <span class="pill ok"><i></i>Заякорен</span></div>
+                <div class="ver-d">
+                  <span>02.06.2026 · добавлен раздел работы на высоте</span>
+                  <span class="mono">hash 0x81aa…c4e2 · prev 0x30f5…9d18</span>
+                </div>
+              </div>
+              <div class="ver-actions"><button class="btn ghost">Proof</button></div>
+            </div>
+            <div class="ver">
+              <div class="rail"><div class="knot"></div></div>
+              <div>
+                <div class="ver-t">v1 — корневая <span class="pill ok"><i></i>Заякорен</span></div>
+                <div class="ver-d">
+                  <span>14.05.2026 · документ заведён в систему</span>
+                  <span class="mono">hash 0x30f5…9d18</span>
+                </div>
+              </div>
+              <div class="ver-actions"><button class="btn ghost">Proof</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= АУДИТ ================= -->
+    <section class="screen" id="scr-audit">
+      <div class="top">
+        <div><h1>Аудит целостности</h1><div class="sub">Файлы ↔ локальный реестр ↔ блокчейн</div></div>
+        <div class="top-actions">
+          <button class="btn primary">Запустить аудит</button>
+          <button class="btn ghost" data-theme-toggle aria-label="Переключить тему">☾</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="audit-sum">
+          <span class="pill ok"><i></i>11 подтверждено</span>
+          <span class="pill mut"><i></i>1 локальный</span>
+          <span class="pill err"><i></i>1 подмена</span>
+          <span class="pill err"><i></i>1 файл утрачен</span>
+          <span class="doc-meta">последний прогон: сегодня 17:58 · 2,4 с</span>
+        </div>
+
+        <div class="card">
+          <div class="audit-row bad">
+            <div class="stripe"></div>
+            <div>
+              <div class="doc-name">Наряд-допуск №118.pdf</div>
+              <div class="audit-note bad">Подмена: хеш файла не совпадает с заякоренным значением</div>
+              <div class="doc-meta mono">ожидался 0x66d1…04af · фактический 0x9452…bf9a</div>
+            </div>
+            <div class="audit-right"><span class="pill err"><i></i>Hash mismatch</span><button class="btn ghost">Детали</button></div>
+          </div>
+          <div class="audit-row bad">
+            <div class="stripe"></div>
+            <div>
+              <div class="doc-name">Акт скрытых работ 07-2026.pdf</div>
+              <div class="audit-note bad">Файл отсутствует, но запись о фиксации существует — возможное уничтожение</div>
+              <div class="doc-meta mono">заякорен 0x3e07…d2c5 · 01.07.2026</div>
+            </div>
+            <div class="audit-right"><span class="pill err"><i></i>Missing file</span><button class="btn ghost">Детали</button></div>
+          </div>
+          <div class="audit-row">
+            <div class="stripe"></div>
+            <div>
+              <div class="doc-name">Журнал ТБ — цех №4.pdf</div>
+              <div class="audit-note">Файл, реестр и блокчейн согласованы</div>
+            </div>
+            <div class="audit-right"><span class="pill ok"><i></i>On-chain OK</span></div>
+          </div>
+          <div class="audit-row">
+            <div class="stripe"></div>
+            <div>
+              <div class="doc-name">Регламент сварочных работ.docx</div>
+              <div class="audit-note">Есть только в локальном реестре — фиксация не выполнялась</div>
+            </div>
+            <div class="audit-right"><span class="pill mut"><i></i>Local only</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ОЧЕРЕДЬ ================= -->
+    <section class="screen" id="scr-queue">
+      <div class="top">
+        <div><h1>Очередь якорения</h1><div class="sub">Фиксации переживают сбои: очередь локальна, воркер дожимает</div></div>
+        <div class="top-actions">
+          <button class="btn primary">Зафиксировать пачку сейчас</button>
+          <button class="btn ghost" data-theme-toggle aria-label="Переключить тему">☾</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="batch-card">
+          <div><div class="bl">Следующий батч</div><div class="bv big num">3 документа</div></div>
+          <div><div class="bl">Отправка</div><div class="bv">через ~2 мин</div></div>
+          <div><div class="bl">Экономия</div><div class="bv">1 транзакция вместо 3</div></div>
+          <span class="pill acc" style="margin-left:auto"><i></i>воркер активен</span>
+        </div>
+
+        <div class="card">
+          <div class="q-row">
+            <span class="pill info"><i></i>Отправлено</span>
+            <div class="q-info">
+              <div class="mono q-hash">0xca010a551815cbb855124a0e92cf1bc34ff6ad1db2d9fc7e40c3e3b09135e438</div>
+              <div class="q-sub">Акт испытаний фланцев DN50.docx · попытка 1</div>
+            </div>
+            <div class="q-right"><span class="q-sub mono">tx 0xd4cb…f5da</span></div>
+          </div>
+          <div class="q-row">
+            <span class="pill warn"><i></i>В очереди</span>
+            <div class="q-info">
+              <div class="mono q-hash">0x94b2f107ab4e00c2231d9a4be08c55618763a01f22e4be0dd60c267ee2111c0</div>
+              <div class="q-sub">Протокол осмотра крана КС-45.pdf · войдёт в батч</div>
+            </div>
+          </div>
+          <div class="q-row">
+            <span class="pill warn"><i></i>Повтор через 40 с</span>
+            <div class="q-info">
+              <div class="mono q-hash">0x11f3c02d88ea15b0c7d502ff6b1a3390cd7e4a1c55b8f2609301b6c5a4772ad8</div>
+              <div class="q-sub">Смета ремонта Т-201.xlsx · попытка 3 из 8 · RPC не ответил</div>
+            </div>
+            <div class="q-right"><button class="btn ghost">Повторить сейчас</button></div>
+          </div>
+          <div class="q-row">
+            <span class="pill ok"><i></i>Подтверждено</span>
+            <div class="q-info">
+              <div class="mono q-hash">merkle root 0x8c44e19b02aa6f37d1250c86b02b6e11fa3d09e2c6ab7c5b91640d327bb3055e</div>
+              <div class="q-sub">батч #12 · 100 документов · 08.07.2026 14:12</div>
+            </div>
+            <div class="q-right"><span class="q-sub mono">tx 0x1f80…9c41</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ИИ-ДИАЛОГИ ================= -->
+    <section class="screen" id="scr-llm">
+      <div class="top">
+        <div><h1>Цепочка ответственности</h1><div class="sub">Что сказала модель — и кто, когда и как это утвердил</div></div>
+        <div class="top-actions">
+          <button class="btn primary">Зафиксировать диалог</button>
+          <button class="btn ghost" data-theme-toggle aria-label="Переключить тему">☾</button>
+        </div>
+      </div>
+      <div class="content">
+        <div>
+          <div class="chain-item">
+            <div class="rail"><div class="knot" style="margin-top:6px"></div></div>
+            <div class="chain-card">
+              <div class="hd">
+                <b>Диалог · anthropic / claude-fable-5</b>
+                <span class="pill ok"><i></i>Заякорен</span>
+                <span class="doc-meta mono">0x7fe1…09ba · 08.07.2026 13:58</span>
+              </div>
+              <div class="msg">
+                <div class="who">Инженер</div>
+                Какой допуск по параллельности уплотнительных поверхностей для фланца DN50 по ГОСТ 33259?
+              </div>
+              <div class="msg ai">
+                <div class="who">Модель</div>
+                Для фланцев DN50 ряда 1 по ГОСТ 33259 отклонение параллельности — не более 0,5 мм. Рекомендую также проверить исполнение уплотнительной поверхности…
+              </div>
+            </div>
+          </div>
+
+          <div class="chain-item">
+            <div class="rail"><div class="knot fill" style="margin-top:6px"></div></div>
+            <div class="chain-card hi">
+              <div class="hd">
+                <b>Аттестация · Иванов И. И., вед. инженер</b>
+                <span class="pill acc"><i></i>Утверждено с изменениями</span>
+                <span class="doc-meta mono">0x3d92…c7f4 · 08.07.2026 14:31</span>
+              </div>
+              <div style="font-size:12.5px">
+                «Рекомендацию модели проверил по ГОСТ 33259-2015, таблица 19. Значение подтверждаю; в акт добавил требование о повторном замере после затяжки.»
+              </div>
+              <div class="doc-meta" style="margin-top:8px">
+                Ссылается на: диалог <span class="mono">0x7fe1…09ba</span> → документ <span class="mono">Акт испытаний фланцев DN50.docx (0xca01…e438)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card pad" style="background: var(--panel2)">
+          <div class="sec-label">Почему это важно</div>
+          <div class="why">
+            Разрыв между автоматически зафиксированным диалогом и осознанной аттестацией — это граница ответственности.
+            Решение с аттестацией — провалидировано человеком; совпадение документа с ответом модели без аттестации — сырая идея ИИ.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ДОКАЗАТЕЛЬСТВА ================= -->
+    <section class="screen" id="scr-evidence">
+      <div class="top">
+        <div><h1>Пакет доказательств</h1><div class="sub">Аудитор проверяет всё сам — без доверия к этому приложению</div></div>
+        <div class="top-actions">
+          <button class="btn primary">Экспортировать evidence.json</button>
+          <button class="btn ghost" data-theme-toggle aria-label="Переключить тему">☾</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="split">
+          <div class="card pad">
+            <div class="sec-label">Что войдёт в пакет</div>
+            <dl class="kv" style="grid-template-columns: 140px 1fr;">
+              <dt>Формат</dt><dd class="mono">notary-evidence/v2</dd>
+              <dt>Документов</dt><dd class="num">14 (все версии — 23 записи)</dd>
+              <dt>Merkle-пруфы</dt><dd class="num">12 — для документов из батчей</dd>
+              <dt>Сеть</dt><dd>Sepolia · chainId 11155111</dd>
+              <dt>Контракт</dt><dd class="mono">0x5FbDB2315678afecb367f032d93F642f64180aa3</dd>
+            </dl>
+            <div class="doc-meta" style="max-width:56ch">
+              Адрес контракта аудитор получает из независимого источника, проверку выполняет через собственный RPC-узел.
+            </div>
+          </div>
+
+          <div class="card pad">
+            <div class="sec-label">Проверка на стороне аудитора</div>
+            <ol class="steps">
+              <li>Получить документы, evidence.json и открытый verifier-cli</li>
+              <li>Просмотреть код верификатора — один файл, одна зависимость</li>
+              <li>Запустить проверку через доверенный RPC-узел</li>
+            </ol>
+            <div class="codeblock mono">$ notary-verify --bundle evidence.json \
+    --dir ./documents --rpc https://…
+
+OK_ON_CHAIN    Журнал ТБ — цех №4.pdf v3
+TAMPERED       Наряд-допуск №118.pdf
+MISSING_FILE   Акт скрытых работ 07-2026.pdf
+
+23 checked, 21 ok, 2 problem(s)</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  const nav = document.querySelectorAll(".nav button");
+  const screens = document.querySelectorAll(".screen");
+
+  function show(id) {
+    screens.forEach(s => s.classList.toggle("on", s.id === "scr-" + id));
+    nav.forEach(b => b.classList.toggle("on", b.dataset.scr === id));
+  }
+
+  nav.forEach(b => b.addEventListener("click", () => show(b.dataset.scr)));
+  document.querySelectorAll("[data-open='doc']").forEach(r =>
+    r.addEventListener("click", () => show("doc"))
+  );
+  document.querySelectorAll("[data-scr-link]").forEach(a =>
+    a.addEventListener("click", () => show(a.dataset.scrLink))
+  );
+
+  const root = document.documentElement;
+  document.querySelectorAll("[data-theme-toggle]").forEach(btn =>
+    btn.addEventListener("click", () => {
+      const dark = root.dataset.theme === "dark" ||
+        (!root.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+      root.dataset.theme = dark ? "light" : "dark";
+      document.querySelectorAll("[data-theme-toggle]").forEach(b => b.textContent = dark ? "☾" : "☀");
+    })
+  );
+</script>

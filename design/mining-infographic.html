@@ -1,0 +1,476 @@
+<title>Иггдрасиль — цена фальсификации данных в горном деле</title>
+<style>
+  :root {
+    --bg: #F7F6F3;
+    --panel: #FFFFFF;
+    --panel2: #EFEDE8;
+    --border: rgba(28, 27, 24, .12);
+    --border2: rgba(28, 27, 24, .22);
+    --text: #211F1C;
+    --muted: #6D6A63;
+    --faint: #9B978E;
+    --accent: #4F5ACB;
+    --accent-ink: #3A44A8;
+    --accent-bg: rgba(94, 106, 210, .10);
+    --danger: #B3382F;
+    --danger-bg: rgba(197, 60, 50, .09);
+    --ok: #1C7C4F;
+    --ok-bg: rgba(38, 155, 105, .10);
+    --money: #8A6410;
+    --money-bg: rgba(196, 148, 32, .12);
+    --strata1: #D8D2C6; --strata2: #C4BBA8; --strata3: #A99C82; --strata4: #7E7057;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0C0D10;
+      --panel: #14161A;
+      --panel2: #1C1E24;
+      --border: rgba(255,255,255,.09);
+      --border2: rgba(255,255,255,.18);
+      --text: #F2F1EE;
+      --muted: #A5A29A;
+      --faint: #6B6961;
+      --accent: #6E79E0;
+      --accent-ink: #98A0EC;
+      --accent-bg: rgba(94,106,210,.16);
+      --danger: #E0655C;
+      --danger-bg: rgba(224,101,92,.12);
+      --ok: #58BE8B;
+      --ok-bg: rgba(88,190,139,.12);
+      --money: #D9AE4A;
+      --money-bg: rgba(217,174,74,.12);
+      --strata1: #23252B; --strata2: #2B2C31; --strata3: #34322F; --strata4: #3E382E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0C0D10; --panel: #14161A; --panel2: #1C1E24;
+    --border: rgba(255,255,255,.09); --border2: rgba(255,255,255,.18);
+    --text: #F2F1EE; --muted: #A5A29A; --faint: #6B6961;
+    --accent: #6E79E0; --accent-ink: #98A0EC; --accent-bg: rgba(94,106,210,.16);
+    --danger: #E0655C; --danger-bg: rgba(224,101,92,.12);
+    --ok: #58BE8B; --ok-bg: rgba(88,190,139,.12);
+    --money: #D9AE4A; --money-bg: rgba(217,174,74,.12);
+    --strata1: #23252B; --strata2: #2B2C31; --strata3: #34322F; --strata4: #3E382E;
+  }
+  :root[data-theme="light"] {
+    --bg: #F7F6F3; --panel: #FFFFFF; --panel2: #EFEDE8;
+    --border: rgba(28,27,24,.12); --border2: rgba(28,27,24,.22);
+    --text: #211F1C; --muted: #6D6A63; --faint: #9B978E;
+    --accent: #4F5ACB; --accent-ink: #3A44A8; --accent-bg: rgba(94,106,210,.10);
+    --danger: #B3382F; --danger-bg: rgba(197,60,50,.09);
+    --ok: #1C7C4F; --ok-bg: rgba(38,155,105,.10);
+    --money: #8A6410; --money-bg: rgba(196,148,32,.12);
+    --strata1: #D8D2C6; --strata2: #C4BBA8; --strata3: #A99C82; --strata4: #7E7057;
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 400 15.5px/1.65 "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  .serif { font-family: Georgia, "Times New Roman", serif; }
+  .mono { font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+
+  .eyebrow {
+    font-size: 11.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent-ink);
+  }
+  .sec-eyebrow {
+    font-size: 11.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  h2.serif { font-size: 30px; font-weight: 500; line-height: 1.2; text-wrap: balance; letter-spacing: -.01em; }
+  .lead { color: var(--muted); max-width: 62ch; }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: 64px 0 0; }
+  .hero h1 {
+    font-family: Georgia, serif; font-weight: 500; letter-spacing: -.015em;
+    font-size: clamp(34px, 6vw, 54px); line-height: 1.08; text-wrap: balance;
+    margin: 14px 0 18px; max-width: 20ch;
+  }
+  .hero .lead { font-size: 17px; }
+
+  .hero-stats {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    margin: 36px 0 0;
+  }
+  .hstat { border-top: 2px solid var(--border2); padding-top: 12px; }
+  .hstat .n { font-family: Georgia, serif; font-size: clamp(34px, 5vw, 46px); line-height: 1; letter-spacing: -.01em; }
+  .hstat .n.red { color: var(--danger); }
+  .hstat .n.money { color: var(--money); }
+  .hstat .l { color: var(--muted); font-size: 13px; margin-top: 8px; max-width: 24ch; }
+
+  .strata {
+    margin-top: 56px; height: 46px; position: relative;
+    background:
+      linear-gradient(to bottom,
+        var(--strata1) 0 25%,
+        var(--strata2) 25% 50%,
+        var(--strata3) 50% 75%,
+        var(--strata4) 75% 100%);
+  }
+  .strata::after {
+    content: ""; position: absolute; left: 12%; top: -14px; bottom: -14px; width: 3px;
+    background: var(--accent);
+  }
+  .strata::before {
+    content: ""; position: absolute; left: calc(12% - 5px); bottom: -24px;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+  section { padding: 60px 0 8px; }
+
+  /* ---------- Timeline ---------- */
+  .tl { margin-top: 28px; display: grid; }
+  .tl-item {
+    display: grid; grid-template-columns: 86px 20px 1fr; gap: 0 16px;
+    padding-bottom: 34px; position: relative;
+  }
+  .tl-year { font-family: Georgia, serif; font-size: 20px; color: var(--muted); text-align: right; padding-top: 2px; }
+  .tl-rail { position: relative; display: flex; justify-content: center; }
+  .tl-rail::before { content: ""; position: absolute; top: 6px; bottom: -6px; width: 2px; background: var(--border2); }
+  .tl-item:last-child .tl-rail::before { bottom: auto; height: 20px; }
+  .tl-dot {
+    position: relative; z-index: 1; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--danger); margin-top: 7px; flex: none;
+    box-shadow: 0 0 0 4px var(--danger-bg);
+  }
+  .tl-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .tl-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .tl-title { font-weight: 600; font-size: 16.5px; }
+  .tl-toll { font-family: Georgia, serif; font-size: 34px; color: var(--danger); line-height: 1; margin-left: auto; }
+  .tl-toll small { font-family: "Segoe UI", system-ui, sans-serif; font-size: 12px; color: var(--muted); display: block; text-align: right; }
+  .tl-what { margin-top: 10px; font-size: 14px; color: var(--muted); max-width: 60ch; }
+  .tl-what b { color: var(--text); font-weight: 600; }
+  .tl-verdict {
+    margin-top: 12px; display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12.5px; font-weight: 600; border-radius: 6px; padding: 4px 10px;
+  }
+  .tl-verdict.bad { background: var(--danger-bg); color: var(--danger); }
+  .tl-verdict.none { background: var(--panel2); color: var(--muted); }
+  .tl-verdict i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+
+  /* ---------- Money tiles ---------- */
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 26px; }
+  .tile {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px 22px;
+  }
+  .tile .n { font-family: Georgia, serif; font-size: 38px; color: var(--money); line-height: 1.05; }
+  .tile .t { font-weight: 600; margin-top: 10px; }
+  .tile .d { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+
+  /* ---------- Versus ---------- */
+  .versus { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 26px; }
+  .vcard { border-radius: 10px; padding: 22px 24px; border: 1px solid var(--border); background: var(--panel); }
+  .vcard.win { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-bg); }
+  .vcard h3 { font-size: 16px; font-weight: 600; }
+  .vcard .vs { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 6px; }
+  .vlist { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; font-size: 14px; }
+  .vlist li { display: flex; gap: 10px; align-items: flex-start; }
+  .vlist .mk { flex: none; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; margin-top: 2px; }
+  .vlist .mk.no { background: var(--danger-bg); color: var(--danger); }
+  .vlist .mk.yes { background: var(--ok-bg); color: var(--ok); }
+
+  /* ---------- Flow ---------- */
+  .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 28px; align-items: stretch; }
+  .fstep { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 14px 16px; }
+  .fstep.hi { border-color: var(--accent); background: var(--accent-bg); }
+  .fstep .fn {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+  .fstep .ft { font-weight: 600; font-size: 13.5px; margin-top: 10px; }
+  .fstep .fd { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .fstep:not(:last-child)::after {
+    content: "→"; position: absolute; right: -13px; top: 42%; color: var(--faint);
+    font-size: 15px; z-index: 1;
+  }
+  .flow-note {
+    margin-top: 16px; padding: 12px 16px; border-left: 3px solid var(--accent);
+    background: var(--panel2); border-radius: 0 8px 8px 0; font-size: 13.5px; color: var(--muted);
+  }
+  .flow-note b { color: var(--text); }
+
+  /* ---------- Built ---------- */
+  .built { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 26px; }
+  .bcard { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .bcard .n { font-family: Georgia, serif; font-size: 30px; line-height: 1.1; color: var(--accent-ink); }
+  .bcard .l { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+
+  .terminal {
+    margin-top: 26px; background: #101114; color: #D3D5DB;
+    border: 1px solid var(--border2); border-radius: 10px; padding: 16px 18px;
+    overflow-x: auto; font-size: 12.5px; line-height: 1.8; white-space: pre;
+  }
+  .terminal .ok { color: #58BE8B; }
+  .terminal .bad { color: #E0655C; }
+  .terminal .dim { color: #7A7D86; }
+
+  /* ---------- Footer ---------- */
+  .foot { margin-top: 64px; border-top: 1px solid var(--border); padding: 22px 0 48px; }
+  .foot .cols { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; align-items: baseline; }
+  .foot p { font-size: 12.5px; color: var(--faint); max-width: 72ch; }
+  .foot a { color: var(--accent-ink); text-decoration: none; }
+  .foot a:hover { text-decoration: underline; }
+  .srcs { font-size: 12px; color: var(--faint); margin-top: 10px; line-height: 2; }
+
+  @media (max-width: 760px) {
+    .hero-stats, .tiles, .versus { grid-template-columns: 1fr; }
+    .flow { grid-template-columns: 1fr; }
+    .fstep:not(:last-child)::after { content: "↓"; right: auto; left: 20px; top: auto; bottom: -16px; }
+    .flow { gap: 20px; }
+    .built { grid-template-columns: repeat(2, 1fr); }
+    .tl-item { grid-template-columns: 0px 20px 1fr; }
+    .tl-year { display: none; }
+  }
+</style>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Иггдрасиль · исследовательский проект · горное дело</div>
+    <h1>Цена фальсифицированных данных</h1>
+    <p class="lead">
+      Крупнейшие аварии в российской горной отрасли объединяет один сценарий:
+      данные безопасности искажались до катастрофы или переписывались после неё.
+      «Иггдрасиль» делает подмену данных математически обнаружимой — журналы, замеры
+      и телеметрия получают внешний криптографический якорь, который не может
+      переписать даже администратор системы.
+    </p>
+
+    <div class="hero-stats">
+      <div class="hstat">
+        <div class="n red num">178</div>
+        <div class="l">погибших в трёх авариях, где установлено искажение данных безопасности</div>
+      </div>
+      <div class="hstat">
+        <div class="n money num">1,1 млрд ₽</div>
+        <div class="l">ущерб в двух делах о добыче за границами горного отвода</div>
+      </div>
+      <div class="hstat">
+        <div class="n num">0</div>
+        <div class="l">осуждённых по итогам «Распадской» — доказать историю документов не удалось</div>
+      </div>
+    </div>
+  </div>
+  <div class="strata" role="img" aria-label="Геологические слои, через которые проходит линия якоря"></div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="sec-eyebrow">Хроника · подземные и открытые работы</div>
+    <h2 class="serif">Четыре аварии, один сценарий</h2>
+
+    <div class="tl">
+      <div class="tl-item">
+        <div class="tl-year">2010</div>
+        <div class="tl-rail"><div class="tl-dot"></div></div>
+        <div class="tl-card">
+          <div class="tl-head">
+            <div class="tl-title">«Распадская», Междуреченск</div>
+            <div class="tl-toll num">91<small>погибший</small></div>
+          </div>
+          <div class="tl-what">
+            В технической документации <b>проектный объём добычи изменён с 8 000 до 21 500 т/сут</b>;
+            план ликвидации аварий не учитывал угольную пыль. Виновность не доказана — в том числе потому,
+            что не удалось строго установить, какая версия документов существовала на какую дату.
+          </div>
+          <div class="tl-verdict none"><i></i>дело прекращено, никто не осуждён</div>
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-year">2016</div>
+        <div class="tl-rail"><div class="tl-dot"></div></div>
+        <div class="tl-card">
+          <div class="tl-head">
+            <div class="tl-title">«Северная», Воркута</div>
+            <div class="tl-toll num">36<small>погибших</small></div>
+          </div>
+          <div class="tl-what">
+            По заявлениям шахтёров, <b>датчики метана «подкручивались» и заклеивались</b>, чтобы не
+            останавливалась добыча; требования проветривания выработок нарушались системно.
+          </div>
+          <div class="tl-verdict bad"><i></i>уголовное дело против 8 руководителей</div>
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-year">2021</div>
+        <div class="tl-rail"><div class="tl-dot"></div></div>
+        <div class="tl-card">
+          <div class="tl-head">
+            <div class="tl-title">«Листвяжная», Кузбасс</div>
+            <div class="tl-toll num">51<small>погибший</small></div>
+          </div>
+          <div class="tl-what">
+            Главный инженер <b>изменял настройки автоматизированной системы аэрогазового контроля</b>,
+            чтобы скрыть загазованность от Ростехнадзора; газоанализаторы выдавались с заклеенными датчиками.
+            Суд установил фальсификацию данных мониторинга.
+          </div>
+          <div class="tl-verdict bad"><i></i>главный инженер — 4 года колонии</div>
+        </div>
+      </div>
+
+      <div class="tl-item">
+        <div class="tl-year">2024</div>
+        <div class="tl-rail"><div class="tl-dot"></div></div>
+        <div class="tl-card">
+          <div class="tl-head">
+            <div class="tl-title">Разрез «Моховский», Кузбасс — открытые работы</div>
+            <div class="tl-toll num">1<small>погибший</small></div>
+          </div>
+          <div class="tl-what">
+            Внезапное <b>обрушение уступа борта</b> во время добычных работ. Ключевой вопрос следствия по
+            ст. 216 УК — вёлся ли мониторинг деформаций и не скорректированы ли журналы наблюдений постфактум.
+          </div>
+          <div class="tl-verdict bad"><i></i>возбуждено дело по ст. 216 УК</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-eyebrow">Открытые горные работы · экономика</div>
+    <h2 class="serif">Где подделывают маркшейдерию — там сотни миллионов</h2>
+    <p class="lead" style="margin-top:12px">
+      Доказательная база дел о добыче за границами горного отвода — маркшейдерские съёмки
+      и отчётность об объёмах. Именно они искажаются, и именно их история должна быть неоспоримой.
+    </p>
+    <div class="tiles">
+      <div class="tile">
+        <div class="n num">629 млн ₽</div>
+        <div class="t">Ущерб государству · Кузбасс, 2020</div>
+        <div class="d">Руководство разреза организовало добычу за границами отвода; доход организаторов — свыше 307 млн ₽.</div>
+      </div>
+      <div class="tile">
+        <div class="n num">239,6 тыс. т</div>
+        <div class="t">Незаконно добытого угля · 2018</div>
+        <div class="d">Партия на 491 млн ₽ остановлена на железной дороге; объём установила маркшейдерская экспертиза.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-eyebrow">Инструмент сегодня и завтра</div>
+    <h2 class="serif">Вероятностная экспертиза против математического факта</h2>
+    <div class="versus">
+      <div class="vcard">
+        <div class="vs">сегодня</div>
+        <h3>Техническая экспертиза давности</h3>
+        <ul class="vlist">
+          <li><span class="mk no">✕</span>Выводы «часто носят вероятностный характер и не позволяют сделать однозначный вывод»</li>
+          <li><span class="mk no">✕</span>Ограниченное временное окно метода летучих компонентов чернил</li>
+          <li><span class="mk no">✕</span>Неприменима к электронным документам и телеметрии</li>
+          <li><span class="mk no">✕</span>Месяцы ожидания, сотни тысяч рублей за документ</li>
+        </ul>
+      </div>
+      <div class="vcard win">
+        <div class="vs">предлагаемый подход</div>
+        <h3>Криптографический якорь</h3>
+        <ul class="vlist">
+          <li><span class="mk yes">✓</span>Детерминированный ответ: хеш либо совпадает, либо нет</li>
+          <li><span class="mk yes">✓</span>Работает бессрочно — якорь не «выветривается»</li>
+          <li><span class="mk yes">✓</span>Любые данные: журналы, съёмки, телеметрия АГК, диалоги с ИИ</li>
+          <li><span class="mk yes">✓</span>Проверка за секунды, копейки за документ при пакетной фиксации</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-eyebrow">Механизм</div>
+    <h2 class="serif">Как работает «Иггдрасиль»</h2>
+    <div class="flow">
+      <div class="fstep">
+        <div class="fn">1</div>
+        <div class="ft">Данные создаются</div>
+        <div class="fd">журнал, маркшейдерская съёмка, замер АГК</div>
+      </div>
+      <div class="fstep">
+        <div class="fn">2</div>
+        <div class="ft">Хешируются</div>
+        <div class="fd">SHA-256 — компактный «отпечаток» содержимого</div>
+      </div>
+      <div class="fstep hi">
+        <div class="fn">3</div>
+        <div class="ft">Пакуются в дерево Меркла</div>
+        <div class="fd">100 замеров = 1 транзакция</div>
+      </div>
+      <div class="fstep">
+        <div class="fn">4</div>
+        <div class="ft">Якорятся во внешнем реестре</div>
+        <div class="fd">запись нельзя изменить задним числом</div>
+      </div>
+      <div class="fstep">
+        <div class="fn">5</div>
+        <div class="ft">Проверяются кем угодно</div>
+        <div class="fd">открытый верификатор, без доверия к предприятию</div>
+      </div>
+    </div>
+    <div class="flow-note">
+      <b>Конфиденциальность соблюдена:</b> оригиналы данных не покидают предприятие —
+      во внешний реестр уходит только хеш, по которому содержимое восстановить невозможно.
+    </div>
+
+    <div class="terminal" role="img" aria-label="Пример вывода независимого верификатора">
+<span class="dim">$ notary-verify --bundle evidence.json --dir ./журналы --rpc &lt;свой узел&gt;</span>
+
+<span class="ok">OK_ON_CHAIN</span>    Журнал замеров метана — лава 812 (v3)
+<span class="ok">OK_ON_CHAIN</span>    Маркшейдерская съёмка выработанного пространства, июнь
+<span class="bad">TAMPERED</span>       Журнал осмотра борта разреза <span class="dim">— содержимое изменено после фиксации</span>
+<span class="bad">MISSING_FILE</span>   Наряд-допуск №118 <span class="dim">— файл отсутствует, запись о фиксации есть</span>
+
+<span class="dim">23 checked, 21 ok, 2 problem(s)</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-eyebrow">Статус</div>
+    <h2 class="serif">Это не концепция — прототип уже работает</h2>
+    <div class="built">
+      <div class="bcard"><div class="n num">74</div><div class="l">автотеста, включая живые e2e против блокчейн-узла</div></div>
+      <div class="bcard"><div class="n num">100 : 1</div><div class="l">документов на одну транзакцию — пакетная фиксация Меркла</div></div>
+      <div class="bcard"><div class="n num">1 файл</div><div class="l">весь независимый верификатор — аудитор читает его код глазами</div></div>
+      <div class="bcard"><div class="n num">6</div><div class="l">типов артефактов: журналы, съёмки, версии, батчи, ИИ-диалоги, аттестации</div></div>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <p>
+        «Иггдрасиль» — система доказуемой фиксации неизменности данных горного производства.
+        Обнаруживает подмену и уничтожение постфактум; формализованная модель угроз и план
+        экспериментальной оценки — в документации проекта.
+        Код открыт: <a href="https://github.com/WhyUSayMyName/ai-advice-notary">github.com/WhyUSayMyName/ai-advice-notary</a>
+      </p>
+    </div>
+    <div class="srcs">
+      Источники: <a href="https://www.rbc.ru/society/28/05/2024/665576b39a79471aaabe9b94">РБК — приговор гл. инженеру «Листвяжной»</a> ·
+      <a href="https://ria.ru/20211202/listvyazhnaya-1761881940.html">РИА — фальсификация датчиков</a> ·
+      <a href="https://www.svoboda.org/a/27581091.html">«Северная»: кто виноват</a> ·
+      <a href="https://oborona.media/raspadskaya/">разбор аварии на «Распадской»</a> ·
+      <a href="https://www.sibreal.org/a/30595665.html">10 лет «Распадской»</a> ·
+      <a href="https://neftegaz.ru/news/incidental/859160-sk-zavel-delo-posle-obrusheniya-ustupa-borta-na-mokhovskom-ugolnom-razreze-v-kuzbasse/">обрушение на Моховском разрезе</a> ·
+      <a href="https://gazeta.a42.ru/lenta/news/68728-v-kuzbasse-rukovodstvo-razreza-zarabotalo-na-nezakonnoi-doby">дело о 629 млн ₽</a> ·
+      <a href="https://tass.ru/sibir-news/5635569">ТАСС — дело о 491 млн ₽</a> ·
+      <a href="https://www.consultant.ru/law/podborki/tehnicheskaya_jekspertiza_davnosti_dokumenta/">об экспертизе давности</a>
+    </div>
+  </div>
+</footer>

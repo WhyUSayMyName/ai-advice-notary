@@ -1,0 +1,469 @@
+<title>YGGDRASIL — фирменный стиль</title>
+<style>
+  :root {
+    --void: #070818;
+    --deep: #0E1130;
+    --violet: #1E2352;
+    --mist: #454E8C;
+    --mist-pale: #7E86BE;
+    --frost: #6FD0E8;
+    --frost-pale: #BCEAF4;
+    --portal: #F0FBFF;
+    --blossom: #E294C6;
+    --bark: #2A2B41;
+    --ink: #E9EDFA;
+    --ink-soft: #A7AECD;
+    --ink-faint: #6E769B;
+    --line: rgba(160, 180, 230, .14);
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+
+  body {
+    background: var(--void);
+    color: var(--ink);
+    font: 400 15px/1.65 "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+
+  .eyebrow {
+    font-size: 11px; letter-spacing: .3em; text-transform: uppercase;
+    color: var(--frost); font-weight: 600;
+  }
+
+  /* ---------------- HERO ---------------- */
+  .hero {
+    position: relative;
+    min-height: 660px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    isolation: isolate;
+  }
+
+  .sky {
+    position: absolute; inset: 0; z-index: 0;
+    background:
+      radial-gradient(46% 40% at 50% 34%, rgba(180, 235, 250, .30) 0%, rgba(120, 190, 230, .13) 38%, rgba(30, 35, 82, 0) 72%),
+      radial-gradient(90% 70% at 50% 20%, #2A3168 0%, #1A1E48 45%, #0B0D28 78%, #070818 100%);
+  }
+
+  .mistband {
+    position: absolute; left: -12%; right: -12%; z-index: 2;
+    height: 190px; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(126, 143, 205, 0) 0%, rgba(133, 154, 210, .22) 45%, rgba(126, 143, 205, 0) 100%);
+    filter: blur(14px);
+  }
+  .mistband.a { top: 26%; }
+  .mistband.b { top: 52%; height: 250px; opacity: .75; }
+
+  .portal {
+    position: absolute; z-index: 1;
+    top: 12%; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 300px;
+    background:
+      radial-gradient(closest-side, var(--portal) 0%, rgba(216, 246, 255, .92) 34%, rgba(130, 210, 240, .40) 62%, rgba(110, 190, 235, 0) 100%);
+    border-radius: 50% / 46%;
+    filter: blur(3px);
+  }
+  .portal::after {
+    content: ""; position: absolute; inset: 34% 34% 26% 34%;
+    background: var(--portal);
+    border-radius: 50% / 44%;
+    filter: blur(7px);
+  }
+
+  .scene { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; }
+  .motes { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+
+  .hero-content {
+    position: relative; z-index: 5;
+    text-align: center; padding: 40px 24px 90px;
+    width: 100%; max-width: 860px;
+  }
+
+  .wordmark { width: 100%; height: auto; display: block; margin: 0 auto; }
+
+  .runes { margin: 26px auto 0; display: block; opacity: .62; }
+
+  .kenning {
+    margin-top: 30px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(13px, 1.7vw, 16px);
+    letter-spacing: .34em; text-transform: uppercase;
+    color: var(--frost-pale);
+  }
+
+  .subtitle {
+    margin: 16px auto 0; max-width: 46ch;
+    color: var(--ink-soft); font-size: 14.5px;
+  }
+
+  .horizon {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 220px; z-index: 6;
+    background: linear-gradient(to bottom, rgba(7, 8, 24, 0) 0%, rgba(7, 8, 24, .82) 62%, var(--void) 100%);
+    pointer-events: none;
+  }
+
+  /* ---------------- SECTIONS ---------------- */
+  section { padding: 72px 0 0; }
+
+  h2 {
+    font-family: Georgia, serif; font-weight: 400;
+    font-size: clamp(24px, 3vw, 32px); letter-spacing: .01em;
+    margin-top: 10px; text-wrap: balance;
+  }
+  .lead { color: var(--ink-soft); max-width: 62ch; margin-top: 12px; }
+
+  /* tree metaphor */
+  .strata { margin-top: 34px; display: grid; gap: 10px; }
+  .stratum {
+    display: grid; grid-template-columns: 128px 1fr auto; align-items: center; gap: 22px;
+    padding: 18px 22px;
+    border: 1px solid var(--line); border-radius: 12px;
+    background: linear-gradient(90deg, rgba(70, 90, 160, .16), rgba(30, 35, 82, .06));
+  }
+  .stratum .part {
+    font-family: Georgia, serif; font-size: 19px; color: var(--frost-pale);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .stratum .maps { color: var(--ink); font-size: 14.5px; }
+  .stratum .maps b { color: var(--ink); font-weight: 600; }
+  .stratum .note { color: var(--ink-faint); font-size: 12.5px; margin-top: 3px; }
+  .stratum .tag {
+    font-family: Consolas, ui-monospace, monospace; font-size: 11.5px;
+    color: var(--frost); border: 1px solid rgba(111, 208, 232, .32);
+    border-radius: 6px; padding: 3px 9px; white-space: nowrap;
+  }
+
+  /* palette */
+  .palette { margin-top: 32px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .sw { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .sw .chip { height: 74px; }
+  .sw .meta { padding: 10px 12px 12px; }
+  .sw .nm { font-size: 12.5px; }
+  .sw .hx { font-family: Consolas, ui-monospace, monospace; font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+
+  /* usage */
+  .usage { margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .ucard {
+    border: 1px solid var(--line); border-radius: 12px; padding: 22px;
+    background: rgba(20, 24, 56, .5);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 168px; gap: 14px;
+  }
+  .ucard.light { background: #EEF2FB; border-color: rgba(20, 25, 60, .12); }
+  .ucard .cap { font-size: 12px; color: var(--ink-faint); letter-spacing: .08em; text-transform: uppercase; }
+  .ucard.light .cap { color: #5A6285; }
+
+  .lockup { display: flex; align-items: center; gap: 14px; }
+  .lockup .name {
+    font-family: Georgia, serif; font-size: 20px; letter-spacing: .18em;
+  }
+  .ucard.light .lockup .name { color: #171B3A; }
+
+  .note {
+    margin-top: 34px; padding: 18px 22px;
+    border-left: 2px solid var(--frost); border-radius: 0 10px 10px 0;
+    background: rgba(70, 90, 160, .10);
+    color: var(--ink-soft); font-size: 14px; max-width: 74ch;
+  }
+  .note b { color: var(--ink); font-weight: 600; }
+
+  footer { padding: 56px 0 70px; color: var(--ink-faint); font-size: 12.5px; }
+
+  @media (max-width: 820px) {
+    .palette { grid-template-columns: repeat(3, 1fr); }
+    .usage { grid-template-columns: 1fr; }
+    .stratum { grid-template-columns: 1fr; gap: 8px; }
+    .hero { min-height: 560px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .portal, .mistband { animation: none !important; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .portal { animation: breathe 7s ease-in-out infinite; }
+    @keyframes breathe {
+      0%, 100% { opacity: .88; transform: translateX(-50%) scaleY(1); }
+      50% { opacity: 1; transform: translateX(-50%) scaleY(1.05); }
+    }
+    .mistband.a { animation: drift 34s linear infinite; }
+    .mistband.b { animation: drift 46s linear infinite reverse; }
+    @keyframes drift {
+      from { transform: translateX(-6%); }
+      to { transform: translateX(6%); }
+    }
+  }
+</style>
+
+<header class="hero">
+  <div class="sky"></div>
+  <div class="portal"></div>
+
+  <svg class="scene" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <g fill="#39406F" opacity=".5">
+      <path d="M232 700V330c0-40-14-66-30-92 30 8 52 26 62 58 8-34 26-54 54-68-14 30-16 58-8 92 6 26 8 48 8 78v302z"/>
+      <path d="M980 700V352c0-46-16-74-38-104 36 10 62 32 74 70 10-40 32-64 66-80-18 36-20 68-10 108 8 30 10 56 10 92v262z"/>
+    </g>
+
+    <g fill="#22254A">
+      <path d="M0 700V196c46 10 84 34 106 74 18-58 44-96 92-124-30 54-34 104-16 164 14 46 18 86 18 140v250z"/>
+      <path d="M1200 700V150c-64 10-116 40-146 92-22-68-56-114-116-148 38 66 44 128 22 202-16 56-20 104-20 168v236z"/>
+      <path d="M470 700V300c0-52-18-84-42-118 40 12 70 38 84 82 12-46 36-74 74-92-20 40-22 76-10 122 10 36 12 64 12 106v300z"/>
+    </g>
+
+    <g stroke="#8FD9EC" stroke-width="2.5" stroke-linecap="round" opacity=".5">
+      <path d="M120 640l40-56M120 640l-6-64M120 640l50-24M120 640l-52-34"/>
+      <path d="M1088 622l-42-58M1088 622l8-64M1088 622l-52-26M1088 622l50-36"/>
+      <path d="M330 668l32-46M330 668l-4-52M330 668l42-20"/>
+      <path d="M880 676l-34-48M880 676l6-54M880 676l-44-22"/>
+    </g>
+    <g fill="#E294C6" opacity=".75">
+      <circle cx="164" cy="578" r="4"/><circle cx="152" cy="596" r="3"/><circle cx="178" cy="600" r="2.5"/>
+      <circle cx="1046" cy="560" r="4"/><circle cx="1060" cy="580" r="3"/><circle cx="1032" cy="584" r="2.5"/>
+      <circle cx="364" cy="618" r="3"/><circle cx="352" cy="636" r="2.5"/>
+      <circle cx="846" cy="624" r="3"/><circle cx="858" cy="644" r="2.5"/>
+    </g>
+
+    <path d="M0 700V612c120-26 214-10 300 22 92 34 178 44 292 22 118-22 224-34 340-10 92 19 174 22 268 6v48z" fill="#111330"/>
+    <path d="M0 700V664c150-30 250-4 356 26 96 27 196 32 306 8 118-26 232-30 348-6 66 14 128 18 190 12v-4z" fill="#0A0B22"/>
+  </svg>
+
+  <div class="mistband a"></div>
+  <div class="mistband b"></div>
+  <canvas class="motes"></canvas>
+
+  <div class="hero-content">
+    <svg class="wordmark" viewBox="-26 -30 694 160" role="img" aria-label="YGGDRASIL">
+      <defs>
+        <!-- userSpaceOnUse обязателен: буква I — вертикальный штрих с нулевой шириной
+             bounding box, и градиент в objectBoundingBox для неё не вычисляется -->
+        <linearGradient id="carve" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#FFFFFF"/>
+          <stop offset="52%" stop-color="#DCF2FB"/>
+          <stop offset="100%" stop-color="#8FC4DE"/>
+        </linearGradient>
+        <filter id="halo" x="-30%" y="-40%" width="160%" height="190%">
+          <feGaussianBlur stdDeviation="9" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <g fill="none" stroke="url(#carve)" stroke-width="9"
+         stroke-linecap="square" stroke-linejoin="miter" filter="url(#halo)">
+        <g transform="translate(0,0)"><path d="M0 0 L30 52 L60 0 M30 52 L30 100"/></g>
+        <g transform="translate(82,0)"><path d="M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54"/></g>
+        <g transform="translate(164,0)"><path d="M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54"/></g>
+        <g transform="translate(246,0)"><path d="M4 2 L4 98 M4 2 L34 2 L56 24 L56 76 L34 98 L4 98"/></g>
+        <g transform="translate(326,0)"><path d="M4 2 L4 98 M4 2 L34 2 L54 20 L54 38 L34 56 L4 56 M30 56 L56 98"/></g>
+        <g transform="translate(404,0)"><path d="M2 98 L30 2 L58 98 M14 64 L46 64"/></g>
+        <g transform="translate(486,0)"><path d="M50 18 L36 2 L16 2 L2 18 L2 32 L14 46 L38 54 L50 68 L50 82 L36 98 L16 98 L2 82"/></g>
+        <g transform="translate(560,0)"><path d="M6 2 L6 98"/></g>
+        <g transform="translate(594,0)"><path d="M4 2 L4 98 L46 98"/></g>
+      </g>
+    </svg>
+
+    <svg class="runes" width="290" height="44" viewBox="-4 -4 298 52"
+         role="img" aria-label="Yggdrasil written in Elder Futhark runes">
+      <g fill="none" stroke="#BCEAF4" stroke-width="3.4" stroke-linecap="square">
+        <g transform="translate(0,0)"><path d="M10 6 L10 34 M10 6 L18 2 M10 34 L2 38"/></g>
+        <g transform="translate(30,0)"><path d="M2 2 L26 38 M26 2 L2 38"/></g>
+        <g transform="translate(68,0)"><path d="M2 2 L26 38 M26 2 L2 38"/></g>
+        <g transform="translate(106,0)"><path d="M3 2 L3 38 M25 2 L25 38 M3 2 L25 38 M3 38 L25 2"/></g>
+        <g transform="translate(144,0)"><path d="M4 2 L4 38 M4 2 L20 10 L4 20 M4 20 L20 38"/></g>
+        <g transform="translate(178,0)"><path d="M4 2 L4 38 M4 6 L18 14 M4 20 L18 28"/></g>
+        <g transform="translate(210,0)"><path d="M18 2 L4 14 L18 26 L4 38"/></g>
+        <g transform="translate(242,0)"><path d="M5 2 L5 38"/></g>
+        <g transform="translate(262,0)"><path d="M5 2 L5 38 M5 2 L17 14"/></g>
+      </g>
+    </svg>
+
+    <p class="kenning">What is anchored cannot be unmade</p>
+    <p class="subtitle">Provable integrity for industrial records, safety logs and AI-generated advice.</p>
+  </div>
+
+  <div class="horizon"></div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The metaphor</div>
+    <h2>Древо держит всю архитектуру</h2>
+    <p class="lead">Имя выбрано не за красоту звучания: каждый ярус мирового древа отвечает
+      реальному слою системы. Метафора не приклеена сверху — она описывает то, что уже построено.</p>
+
+    <div class="strata">
+      <div class="stratum">
+        <div class="part">
+          <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" fill="none" stroke="#BCEAF4" stroke-width="2">
+            <path d="M13 3v20M13 23c-6 0-9-4-10-8M13 23c6 0 9-4 10-8"/><circle cx="13" cy="3" r="2.4"/>
+          </svg>
+          Корень
+        </div>
+        <div>
+          <div class="maps"><b>Якорь во внешнем реестре</b></div>
+          <div class="note">единственное, что уходит on-chain — 32 байта, недосягаемые для оператора</div>
+        </div>
+        <div class="tag">anchorRoot()</div>
+      </div>
+
+      <div class="stratum">
+        <div class="part">
+          <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" fill="none" stroke="#BCEAF4" stroke-width="2">
+            <path d="M13 2v22M13 8l6-4M13 15l6-4M13 15l-6-4M13 8L7 4"/>
+          </svg>
+          Ствол
+        </div>
+        <div>
+          <div class="maps"><b>Связанный реестр якорей</b></div>
+          <div class="note">кольца растут только вперёд: изъять эпоху нельзя, разрыв виден</div>
+        </div>
+        <div class="tag">Cₙ = H(Cₙ₋₁ ‖ root)</div>
+      </div>
+
+      <div class="stratum">
+        <div class="part">
+          <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" fill="none" stroke="#BCEAF4" stroke-width="2">
+            <path d="M13 24V13M13 13L5 5M13 13l8-8M5 5V2M5 5H2M21 5V2M21 5h3"/>
+          </svg>
+          Ветви
+        </div>
+        <div>
+          <div class="maps"><b>Merkle-пакеты</b></div>
+          <div class="note">сто документов сходятся в один корень — одна транзакция вместо ста</div>
+        </div>
+        <div class="tag">merkle proof</div>
+      </div>
+
+      <div class="stratum">
+        <div class="part">
+          <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" fill="none" stroke="#BCEAF4" stroke-width="2">
+            <path d="M13 23c0-8 4-13 10-14-1 8-5 12-10 14zM13 23C13 15 9 10 3 9c1 8 5 12 10 14z"/>
+          </svg>
+          Листья
+        </div>
+        <div>
+          <div class="maps"><b>Документы, замеры, диалоги с ИИ</b></div>
+          <div class="note">оригиналы остаются у владельца — наружу выходит только хеш</div>
+        </div>
+        <div class="tag">SHA-256</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Palette</div>
+    <h2>Девять миров в шести цветах</h2>
+    <p class="lead">Палитра взята из мира Иггдрасиля: холодная мгла, ледяная листва, розовые соцветия
+      и слепящий свет разлома — единственный источник света в кадре.</p>
+
+    <div class="palette">
+      <div class="sw"><div class="chip" style="background:#070818"></div><div class="meta"><div class="nm">Void</div><div class="hx">#070818</div></div></div>
+      <div class="sw"><div class="chip" style="background:#1E2352"></div><div class="meta"><div class="nm">Deep</div><div class="hx">#1E2352</div></div></div>
+      <div class="sw"><div class="chip" style="background:#454E8C"></div><div class="meta"><div class="nm">Mist</div><div class="hx">#454E8C</div></div></div>
+      <div class="sw"><div class="chip" style="background:#6FD0E8"></div><div class="meta"><div class="nm">Frost</div><div class="hx">#6FD0E8</div></div></div>
+      <div class="sw"><div class="chip" style="background:#F0FBFF"></div><div class="meta"><div class="nm">Rift</div><div class="hx">#F0FBFF</div></div></div>
+      <div class="sw"><div class="chip" style="background:#E294C6"></div><div class="meta"><div class="nm">Blossom</div><div class="hx">#E294C6</div></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Lockups</div>
+    <h2>Знак в работе</h2>
+
+    <div class="usage">
+      <div class="ucard">
+        <div class="lockup">
+          <svg width="40" height="40" viewBox="0 0 40 40" aria-label="Знак Иггдрасиль" role="img"
+               fill="none" stroke="#BCEAF4" stroke-width="2.6" stroke-linecap="square">
+            <path d="M20 4v32M20 12l9-6M20 12l-9-6M20 22l11-7M20 22L9 15M20 36c-7 0-11-5-12-10M20 36c7 0 11-5 12-10"/>
+          </svg>
+          <span class="name">YGGDRASIL</span>
+        </div>
+        <div class="cap">на тёмном — основное</div>
+      </div>
+
+      <div class="ucard light">
+        <div class="lockup">
+          <svg width="40" height="40" viewBox="0 0 40 40" aria-label="Знак Иггдрасиль" role="img"
+               fill="none" stroke="#1B2450" stroke-width="2.6" stroke-linecap="square">
+            <path d="M20 4v32M20 12l9-6M20 12l-9-6M20 22l11-7M20 22L9 15M20 36c-7 0-11-5-12-10M20 36c7 0 11-5 12-10"/>
+          </svg>
+          <span class="name">YGGDRASIL</span>
+        </div>
+        <div class="cap">на светлом — документы и печать</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Как это уживается с интерфейсом.</b> Кинематографичная мгла — язык обложки: заставка, сайт,
+      титульный лист диплома, презентация. Внутри приложения от неё остаются только знак, ледяной
+      акцент Frost и рунический вордмарк в шапке: инспектор и маркшейдер должны читать таблицы
+      хешей, а не любоваться туманом.
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Иггдрасиль · фирменный стиль · вордмарк и руны вырезаны вектором, без внешних шрифтов</div>
+</footer>
+
+<script>
+  const c = document.querySelector(".motes");
+  const hero = document.querySelector(".hero");
+  const ctx = c.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let motes = [], w = 0, h = 0, raf = null;
+
+  function size() {
+    const r = hero.getBoundingClientRect();
+    w = c.width = r.width * devicePixelRatio;
+    h = c.height = r.height * devicePixelRatio;
+    c.style.width = r.width + "px";
+    c.style.height = r.height + "px";
+    motes = Array.from({ length: 70 }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: (Math.random() * 1.6 + 0.5) * devicePixelRatio,
+      s: (Math.random() * 0.28 + 0.08) * devicePixelRatio,
+      a: Math.random() * 0.5 + 0.15,
+      p: Math.random() * Math.PI * 2,
+    }));
+  }
+
+  function frame() {
+    ctx.clearRect(0, 0, w, h);
+    for (const m of motes) {
+      m.y -= m.s;
+      m.p += 0.008;
+      if (m.y < -10) { m.y = h + 10; m.x = Math.random() * w; }
+      const x = m.x + Math.sin(m.p) * 14 * devicePixelRatio;
+      ctx.beginPath();
+      ctx.arc(x, m.y, m.r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(198, 238, 250, " + m.a + ")";
+      ctx.fill();
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  function still() {
+    ctx.clearRect(0, 0, w, h);
+    for (const m of motes) {
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(198, 238, 250, " + m.a + ")";
+      ctx.fill();
+    }
+  }
+
+  size();
+  reduce ? still() : frame();
+  addEventListener("resize", () => {
+    if (raf) cancelAnimationFrame(raf);
+    size();
+    reduce ? still() : (raf = requestAnimationFrame(frame));
+  });
+</script>
