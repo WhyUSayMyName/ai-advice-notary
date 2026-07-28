@@ -41,3 +41,8 @@ export async function startAnchorService() {
 export function listAnchorQueue() {
   return getDatabase().getAnchorQueue()
 }
+
+/** Пакеты фиксации — «эпохи» ствола: каждая закрыта одной транзакцией. */
+export function listAnchorBatches() {
+  return getDatabase().listAnchorBatches()
+}

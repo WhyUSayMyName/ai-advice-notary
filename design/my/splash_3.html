@@ -84,37 +84,24 @@
     opacity: 0; animation: appear .5s ease-out .22s forwards;
   }
   /* Вордмарк не проявляется, а вырезается: штрих идёт по буквам.
-     pathLength="100" на каждом пути нормализует длины: буква I короче R
-     втрое, и без нормализации они дорисовывались бы в разное время. */
+     README называет его «вырезанным вектором» — теперь это видно. */
   .wordmark path {
-    stroke-dasharray: 100; stroke-dashoffset: 100;
-    animation: carve .7s cubic-bezier(.32, .72, .18, 1) forwards;
+    stroke-dasharray: 430; stroke-dashoffset: 430;
+    animation: carve 1.6s cubic-bezier(.32, .72, .18, 1) .3s forwards;
   }
-  /* Резец идёт слева направо, буква за буквой */
-  .wordmark > g > g:nth-child(1) path { animation-delay: .26s; }
-  .wordmark > g > g:nth-child(2) path { animation-delay: .315s; }
-  .wordmark > g > g:nth-child(3) path { animation-delay: .37s; }
-  .wordmark > g > g:nth-child(4) path { animation-delay: .425s; }
-  .wordmark > g > g:nth-child(5) path { animation-delay: .48s; }
-  .wordmark > g > g:nth-child(6) path { animation-delay: .535s; }
-  .wordmark > g > g:nth-child(7) path { animation-delay: .59s; }
-  .wordmark > g > g:nth-child(8) path { animation-delay: .645s; }
-  .wordmark > g > g:nth-child(9) path { animation-delay: .70s; }
-
   @keyframes carve { to { stroke-dashoffset: 0; } }
   @keyframes appear { to { opacity: 1; } }
 
-  /* Руны подчинены вордмарку: тоньше, уже, глуше — это подпись, не второй логотип.
-     Появляются после того, как резец прошёл последнюю букву (≈1,4 с). */
+  /* Руны подчинены вордмарку: тоньше, уже, глуше — это подпись, не второй логотип */
   .runes {
     margin-top: 16px; opacity: 0;
-    animation: emergeRunes .7s ease-out 1.25s forwards;
+    animation: emergeRunes .9s ease-out .62s forwards;
   }
 
   .kenning {
     margin-top: 16px; font-size: 10px; letter-spacing: .34em; text-transform: uppercase;
     color: #BCEAF4; opacity: 0;
-    animation: emergeSoft .7s ease-out 1.55s forwards;
+    animation: emergeSoft .9s ease-out .92s forwards;
   }
 
   @keyframes emerge {
@@ -259,13 +246,6 @@
         </g>
       </g>
 
-      <!-- редкие кристаллики: четырёхлучевые искры на инее -->
-      <g class="bloom" stroke="#DCF2FB" stroke-width="1" stroke-linecap="round" opacity=".5">
-        <path d="M118 356v-7M114.5 352.5h7M118 356l2.5-2.5M118 356l-2.5 2.5"/>
-        <path d="M552 344v-6M549 341h6"/>
-        <path d="M302 368v-5M299.5 365.5h5"/>
-        <path d="M428 372v-5M425.5 369.5h5"/>
-      </g>
 
     </svg>
 
@@ -306,15 +286,15 @@
         </defs>
         <g fill="none" stroke="url(#carve)" stroke-width="9"
            stroke-linecap="square" stroke-linejoin="miter" filter="url(#halo)">
-          <g transform="translate(0,0)"><path pathLength="100" d="M0 0 L30 52 L60 0 M30 52 L30 100"/></g>
-          <g transform="translate(82,0)"><path pathLength="100" d="M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54"/></g>
-          <g transform="translate(164,0)"><path pathLength="100" d="M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54"/></g>
-          <g transform="translate(246,0)"><path pathLength="100" d="M4 2 L4 98 M4 2 L34 2 L56 24 L56 76 L34 98 L4 98"/></g>
-          <g transform="translate(326,0)"><path pathLength="100" d="M4 2 L4 98 M4 2 L34 2 L54 20 L54 38 L34 56 L4 56 M30 56 L56 98"/></g>
-          <g transform="translate(404,0)"><path pathLength="100" d="M2 98 L30 2 L58 98 M14 64 L46 64"/></g>
-          <g transform="translate(486,0)"><path pathLength="100" d="M50 18 L36 2 L16 2 L2 18 L2 32 L14 46 L38 54 L50 68 L50 82 L36 98 L16 98 L2 82"/></g>
-          <g transform="translate(560,0)"><path pathLength="100" d="M6 2 L6 98"/></g>
-          <g transform="translate(594,0)"><path pathLength="100" d="M4 2 L4 98 L46 98"/></g>
+          <g transform="translate(0,0)"><path d="M0 0 L30 52 L60 0 M30 52 L30 100"/></g>
+          <g transform="translate(82,0)"><path d="M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54"/></g>
+          <g transform="translate(164,0)"><path d="M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54"/></g>
+          <g transform="translate(246,0)"><path d="M4 2 L4 98 M4 2 L34 2 L56 24 L56 76 L34 98 L4 98"/></g>
+          <g transform="translate(326,0)"><path d="M4 2 L4 98 M4 2 L34 2 L54 20 L54 38 L34 56 L4 56 M30 56 L56 98"/></g>
+          <g transform="translate(404,0)"><path d="M2 98 L30 2 L58 98 M14 64 L46 64"/></g>
+          <g transform="translate(486,0)"><path d="M50 18 L36 2 L16 2 L2 18 L2 32 L14 46 L38 54 L50 68 L50 82 L36 98 L16 98 L2 82"/></g>
+          <g transform="translate(560,0)"><path d="M6 2 L6 98"/></g>
+          <g transform="translate(594,0)"><path d="M4 2 L4 98 L46 98"/></g>
         </g>
       </svg>
 

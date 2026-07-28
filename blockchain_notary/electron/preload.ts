@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("api", {
   // anchor queue
   listAnchorQueue: () => ipcRenderer.invoke("anchor:list"),
 
+  listAnchorBatches: () => ipcRenderer.invoke("anchor:batches"),
+
   onAnchorUpdated: (callback: (event: unknown) => void) => {
     const listener = (_e: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
     ipcRenderer.on("anchor:updated", listener)

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Sidebar, type ScreenId } from "./components/Sidebar"
 import { Screen } from "./components/Screen"
-import { Button, short } from "./components/ui"
+import { Button, Toast, short } from "./components/ui"
 import { RegistryScreen } from "./screens/RegistryScreen"
 import { DocumentScreen } from "./screens/DocumentScreen"
 import { AuditScreen } from "./screens/AuditScreen"
 import { QueueScreen } from "./screens/QueueScreen"
+import { EpochsScreen } from "./screens/EpochsScreen"
 import { EvidenceScreen } from "./screens/EvidenceScreen"
 
 export default function App() {
@@ -28,6 +29,8 @@ export default function App() {
   const [auditResults, setAuditResults] = useState<AuditResult[]>([])
   const [chainReports, setChainReports] = useState<VersionChainReport[]>([])
   const [queue, setQueue] = useState<AnchorQueueItem[]>([])
+  const [batches, setBatches] = useState<AnchorBatchSummary[]>([])
+  const [toast, setToast] = useState<string | null>(null)
 
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactRecord | null>(null)
   const [artifactHistory, setArtifactHistory] = useState<ArtifactRecord[]>([])
@@ -39,6 +42,14 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  // Подтверждение копирования само исчезает — модальность здесь была бы наказанием
+  const notify = useCallback((text: string) => {
+    setToast(text)
+    setTimeout(() => setToast(null), 1800)
+  }, [])
+
+  const onHashCopied = useCallback(() => notify("Хеш скопирован"), [notify])
 
   const auditMap = useMemo(() => new Map(auditResults.map((r) => [r.id, r])), [auditResults])
 
@@ -97,6 +108,15 @@ export default function App() {
     setQueue(res.queue ?? [])
   }, [])
 
+  const loadBatches = useCallback(async () => {
+    const res = await window.api.listAnchorBatches()
+    if (!res.ok) {
+      log(`Ошибка загрузки эпох: ${res.error}`)
+      return
+    }
+    setBatches(res.batches ?? [])
+  }, [])
+
   const loadArtifactHistory = useCallback(async (artifactId: string) => {
     const res = await window.api.getArtifactHistory(artifactId)
     if (!res.ok) {
@@ -111,7 +131,8 @@ export default function App() {
     void runAudit()
     void inspectChains()
     void loadQueue()
-  }, [loadArtifacts, runAudit, inspectChains, loadQueue])
+    void loadBatches()
+  }, [loadArtifacts, runAudit, inspectChains, loadQueue, loadBatches])
 
   // События anchor-очереди: живой статус фиксаций из main-процесса
   useEffect(() => {
@@ -143,17 +164,27 @@ export default function App() {
           break
       }
       void loadQueue()
+      void loadBatches()
     })
     return unsubscribe
-  }, [loadArtifacts, runAudit, loadQueue])
+  }, [loadArtifacts, runAudit, loadQueue, loadBatches])
 
   const refreshAll = useCallback(async () => {
     await loadArtifacts()
     await runAudit()
     await inspectChains()
     await loadQueue()
+    await loadBatches()
     if (selectedArtifact) await loadArtifactHistory(selectedArtifact.artifact_id)
-  }, [loadArtifacts, runAudit, inspectChains, loadQueue, loadArtifactHistory, selectedArtifact])
+  }, [
+    loadArtifacts,
+    runAudit,
+    inspectChains,
+    loadQueue,
+    loadBatches,
+    loadArtifactHistory,
+    selectedArtifact,
+  ])
 
   const connect = async () => {
     log(`Подключение к ${rpcUrl}`)
@@ -410,17 +441,6 @@ export default function App() {
     await checkHash(artifact.hash)
   }
 
-  const themeButton = (
-    <Button
-      variant="ghost"
-      onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-      aria-label="Переключить тему"
-      title="Переключить тему"
-    >
-      {theme === "dark" ? "☾" : "☀"}
-    </Button>
-  )
-
   const screens: Record<ScreenId, React.ReactNode> = {
     registry: (
       <Screen
@@ -435,7 +455,6 @@ export default function App() {
             <Button variant="primary" onClick={pickFile}>
               Выбрать файл
             </Button>
-            {themeButton}
           </>
         }
       >
@@ -444,6 +463,7 @@ export default function App() {
           auditMap={auditMap}
           queuedCount={pendingCount}
           onOpen={openArtifact}
+          onCopied={onHashCopied}
         />
       </Screen>
     ),
@@ -470,7 +490,6 @@ export default function App() {
             <Button variant="primary" onClick={notarizeSelectedVersion} disabled={!selectedArtifact}>
               Зафиксировать версию
             </Button>
-            {themeButton}
           </>
         }
       >
@@ -494,11 +513,14 @@ export default function App() {
             <Button variant="primary" onClick={runAudit}>
               Запустить аудит
             </Button>
-            {themeButton}
           </>
         }
       >
-        <AuditScreen results={auditResults} />
+        <AuditScreen
+          results={auditResults}
+          onCopied={onHashCopied}
+          onOpenQueue={() => setScreen("queue")}
+        />
       </Screen>
     ),
 
@@ -509,11 +531,20 @@ export default function App() {
         actions={
           <>
             <Button onClick={loadQueue}>Обновить</Button>
-            {themeButton}
           </>
         }
       >
         <QueueScreen queue={queue} />
+      </Screen>
+    ),
+
+    epochs: (
+      <Screen
+        title="Кольца эпох"
+        subtitle="Ствол реестра: каждая эпоха — пакет документов, закрытый одной транзакцией"
+        actions={<Button onClick={loadBatches}>Обновить</Button>}
+      >
+        <EpochsScreen batches={batches} onCopied={onHashCopied} />
       </Screen>
     ),
 
@@ -526,7 +557,6 @@ export default function App() {
             <Button variant="primary" onClick={exportEvidence}>
               Экспортировать
             </Button>
-            {themeButton}
           </>
         }
       >
@@ -548,7 +578,13 @@ export default function App() {
       <Sidebar
         screen={screen}
         onScreen={setScreen}
-        counts={{ registry: artifacts.length, queue: pendingCount, audit: problemCount }}
+        counts={{
+          registry: artifacts.length,
+          queue: pendingCount,
+          audit: problemCount,
+          epochs: batches.length,
+        }}
+        alerts={{ audit: problemCount > 0 }}
         connected={netStatus === "Подключено"}
         netStatus={netStatus}
         chainId={chainId}
@@ -557,6 +593,8 @@ export default function App() {
         onRpcUrl={setRpcUrl}
         onConnect={connect}
         documentEnabled={Boolean(selectedArtifact)}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -590,6 +628,8 @@ export default function App() {
           ) : null}
         </div>
       </div>
+
+      <Toast text={toast} />
     </div>
   )
 }

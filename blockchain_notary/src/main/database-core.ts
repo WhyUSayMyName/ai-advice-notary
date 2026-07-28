@@ -42,6 +42,9 @@ export type AnchorBatch = {
   members: string[]
 }
 
+/** Пакет без состава — для списков и обзорных экранов. */
+export type AnchorBatchSummary = Omit<AnchorBatch, "members">
+
 export type AnchorQueueItem = {
   id: number
   hash: string
@@ -484,6 +487,21 @@ export function createDatabase(dbPath: string) {
     return batchRow(root)
   }
 
+  /**
+   * Список пакетов, свежие первыми. Состав намеренно не загружается:
+   * в пакете могут быть сотни хешей, а списку они не нужны.
+   */
+  function listAnchorBatches(limit = 200): AnchorBatchSummary[] {
+    return db
+      .prepare(`
+        SELECT root, tx_hash, leaf_count, created_at
+        FROM anchor_batches
+        ORDER BY created_at DESC
+        LIMIT ?
+      `)
+      .all(limit) as AnchorBatchSummary[]
+  }
+
   /** Все пакеты, содержащие данный файловый хеш (свежие первыми). */
   function getAnchorBatchesForHash(hash: string): AnchorBatch[] {
     const roots = db
@@ -526,6 +544,7 @@ export function createDatabase(dbPath: string) {
     deleteAnchorBatch,
     getAnchorBatch,
     getAnchorBatchesForHash,
+    listAnchorBatches,
     close: () => db.close(),
   }
 }

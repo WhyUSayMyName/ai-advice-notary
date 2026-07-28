@@ -74,6 +74,13 @@ type AnchorQueueItem = {
   updated_at: number
 }
 
+type AnchorBatchSummary = {
+  root: string
+  tx_hash: string | null
+  leaf_count: number
+  created_at: number
+}
+
 type AnchorUpdateEvent = {
   type: "queued" | "sent" | "confirmed" | "retry" | "failed" | "recovered"
   item: AnchorQueueItem
@@ -243,6 +250,12 @@ type AnchorUpdateEvent = {
       listAnchorQueue: () => Promise<{
         ok: boolean
         queue?: AnchorQueueItem[]
+        error?: string
+      }>
+
+      listAnchorBatches: () => Promise<{
+        ok: boolean
+        batches?: AnchorBatchSummary[]
         error?: string
       }>
 

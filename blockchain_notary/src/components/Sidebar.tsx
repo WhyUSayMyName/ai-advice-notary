@@ -1,7 +1,7 @@
 import React from "react"
 import { Mark, Runes, Wordmark } from "./ui"
 
-export type ScreenId = "registry" | "document" | "audit" | "queue" | "evidence"
+export type ScreenId = "registry" | "document" | "audit" | "queue" | "epochs" | "evidence"
 
 const ICONS: Record<ScreenId, React.ReactNode> = {
   registry: (
@@ -28,6 +28,13 @@ const ICONS: Record<ScreenId, React.ReactNode> = {
       <circle cx="13" cy="11.5" r="1.6" />
     </>
   ),
+  epochs: (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <circle cx="8" cy="8" r="3.6" />
+      <circle cx="8" cy="8" r="1.4" />
+    </>
+  ),
   evidence: (
     <>
       <path d="M8 1.6l5.5 2.2v4c0 3.4-2.3 6-5.5 7.2-3.2-1.2-5.5-3.8-5.5-7.2v-4L8 1.6z" />
@@ -36,18 +43,35 @@ const ICONS: Record<ScreenId, React.ReactNode> = {
   ),
 }
 
-const NAV: Array<{ id: ScreenId; label: string }> = [
-  { id: "registry", label: "Реестр" },
-  { id: "document", label: "Документ" },
-  { id: "audit", label: "Аудит" },
-  { id: "queue", label: "Очередь" },
-  { id: "evidence", label: "Доказательства" },
+/**
+ * Меню сгруппировано по смыслу: что фиксируем и чем это доказываем.
+ * Плоский список из шести пунктов не показывал этой разницы.
+ */
+const GROUPS: Array<{ title: string; items: Array<{ id: ScreenId; label: string }> }> = [
+  {
+    title: "Записи",
+    items: [
+      { id: "registry", label: "Реестр" },
+      { id: "document", label: "Документ" },
+    ],
+  },
+  {
+    title: "Целостность",
+    items: [
+      { id: "audit", label: "Аудит" },
+      { id: "queue", label: "Очередь" },
+      { id: "epochs", label: "Кольца эпох" },
+      { id: "evidence", label: "Доказательства" },
+    ],
+  },
 ]
 
 export type SidebarProps = {
   screen: ScreenId
   onScreen: (id: ScreenId) => void
   counts: Partial<Record<ScreenId, number>>
+  /** Счётчики, которые надо показать тревожным цветом */
+  alerts?: Partial<Record<ScreenId, boolean>>
   connected: boolean
   netStatus: string
   chainId: number | null
@@ -56,12 +80,15 @@ export type SidebarProps = {
   onRpcUrl: (v: string) => void
   onConnect: () => void
   documentEnabled: boolean
+  theme: "dark" | "light"
+  onToggleTheme: () => void
 }
 
 export function Sidebar({
   screen,
   onScreen,
   counts,
+  alerts = {},
   connected,
   netStatus,
   chainId,
@@ -70,6 +97,8 @@ export function Sidebar({
   onRpcUrl,
   onConnect,
   documentEnabled,
+  theme,
+  onToggleTheme,
 }: SidebarProps) {
   return (
     <aside className="relative flex w-[232px] shrink-0 flex-col border-r border-line bg-panel px-2.5 py-3.5">
@@ -87,8 +116,15 @@ export function Sidebar({
 
         <Runes width={84} className="ml-[36px] mt-2 text-faint opacity-70" />
 
-        <div className="ml-[36px] mt-2 flex items-center gap-1.5 text-[11px] text-muted">
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? "bg-ok" : "bg-faint"}`} />
+        <div className="ml-[36px] mt-2 flex items-center gap-2 text-[11px] text-muted">
+          {/* Ореол вокруг точки: чистый круг в 6px на тёмном фоне почти не виден */}
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+              connected
+                ? "bg-ok shadow-[0_0_0_3px_var(--ok-bg)]"
+                : "bg-faint shadow-[0_0_0_3px_var(--row-hover)]"
+            }`}
+          />
           {connected && blockNumber !== null ? (
             <span className="num truncate">блок {blockNumber.toLocaleString("ru-RU")}</span>
           ) : (
@@ -97,38 +133,52 @@ export function Sidebar({
         </div>
       </div>
 
-      <nav className="relative flex flex-col gap-px" aria-label="Разделы">
-        {NAV.map((item) => {
-          const active = screen === item.id
-          const disabled = item.id === "document" && !documentEnabled
-          const count = counts[item.id]
+      <nav className="relative flex flex-col gap-3" aria-label="Разделы">
+        {GROUPS.map((group) => (
+          <div key={group.title} className="flex flex-col gap-px">
+            <div className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-faint">
+              {group.title}
+            </div>
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => onScreen(item.id)}
-              disabled={disabled}
-              className={`flex items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-                active ? "bg-accent-bg text-ink" : "text-muted hover:bg-row-hover hover:text-ink"
-              }`}
-            >
-              <svg
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                className={`h-4 w-4 shrink-0 ${active ? "text-accent-hi" : "text-faint"}`}
-                aria-hidden="true"
-              >
-                {ICONS[item.id]}
-              </svg>
-              <span className="truncate">{item.label}</span>
-              {count !== undefined && count > 0 ? (
-                <span className="num ml-auto text-[11px] text-faint">{count}</span>
-              ) : null}
-            </button>
-          )
-        })}
+            {group.items.map((item) => {
+              const active = screen === item.id
+              const disabled = item.id === "document" && !documentEnabled
+              const count = counts[item.id]
+              const alert = alerts[item.id]
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => onScreen(item.id)}
+                  disabled={disabled}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                    active ? "bg-accent-bg text-ink" : "text-muted hover:bg-row-hover hover:text-ink"
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    className={`h-4 w-4 shrink-0 ${active ? "text-accent-hi" : "text-faint"}`}
+                    aria-hidden="true"
+                  >
+                    {ICONS[item.id]}
+                  </svg>
+                  <span className="truncate">{item.label}</span>
+                  {count !== undefined && count > 0 ? (
+                    <span
+                      className={`num ml-auto text-[11px] ${alert ? "font-semibold text-err" : "text-faint"}`}
+                    >
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="relative mt-auto space-y-2 border-t border-line px-2 pt-2.5">
@@ -139,7 +189,8 @@ export function Sidebar({
           value={rpcUrl}
           onChange={(e) => onRpcUrl(e.target.value)}
           spellCheck={false}
-          className="mono w-full rounded-md border border-line bg-panel2 px-2 py-1.5 text-ink outline-none focus:border-accent"
+          aria-label="Адрес RPC-узла"
+          className="mono w-full rounded-[var(--radius-s)] border border-line bg-panel2 px-2 py-1.5 text-ink outline-none focus:border-accent"
         />
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11.5px] text-muted">
@@ -147,11 +198,21 @@ export function Sidebar({
           </span>
           <button
             onClick={onConnect}
-            className="rounded-md border border-line2 px-2 py-1 text-[11.5px] font-medium text-ink transition-colors hover:bg-panel2"
+            className="rounded-[var(--radius-s)] border border-line2 px-2 py-1 text-[11.5px] font-medium text-ink transition-colors hover:bg-panel2"
           >
             {connected ? "Обновить" : "Подключить"}
           </button>
         </div>
+
+        {/* Переключатель темы живёт среди настроек, а не рядом с «Зафиксировать».
+            Иконка показывает результат нажатия, а не текущее состояние. */}
+        <button
+          onClick={onToggleTheme}
+          className="flex w-full items-center gap-2 rounded-[var(--radius-s)] px-1 py-1.5 text-[11.5px] text-muted transition-colors hover:bg-row-hover hover:text-ink"
+        >
+          <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+          {theme === "dark" ? "Светлая тема" : "Тёмная тема"}
+        </button>
       </div>
     </aside>
   )

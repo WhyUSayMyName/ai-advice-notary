@@ -201,3 +201,39 @@ describe("миграция со старой схемы (глобальный UN
     db.close()
   })
 })
+
+describe("пакеты фиксации (эпохи)", () => {
+  let db: NotaryDatabase
+
+  beforeEach(() => {
+    db = createDatabase(":memory:")
+  })
+
+  afterEach(() => {
+    db.close()
+  })
+
+  it("listAnchorBatches отдаёт пакеты свежими вперёд, без состава", () => {
+    db.createAnchorBatch(H(100), [H(1), H(2), H(3)])
+    db.setAnchorBatchTx(H(100), "0xTX1")
+    db.createAnchorBatch(H(200), [H(4), H(5)])
+
+    const list = db.listAnchorBatches()
+
+    expect(list).toHaveLength(2)
+    // Порядок по created_at DESC; при совпадении времени достаточно,
+    // что оба пакета на месте с верными счётчиками листьев
+    const byRoot = new Map(list.map((b) => [b.root, b]))
+    expect(byRoot.get(H(100))!.leaf_count).toBe(3)
+    expect(byRoot.get(H(100))!.tx_hash).toBe("0xTX1")
+    expect(byRoot.get(H(200))!.leaf_count).toBe(2)
+    expect(byRoot.get(H(200))!.tx_hash).toBeNull()
+
+    // Состав намеренно не грузится — в списке он не нужен
+    expect(list[0]).not.toHaveProperty("members")
+  })
+
+  it("пустой реестр пакетов — пустой список, а не ошибка", () => {
+    expect(db.listAnchorBatches()).toEqual([])
+  })
+})

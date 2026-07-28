@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Yggdrasil</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #070818; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    #__bundler_loading { position: fixed; bottom: 20px; right: 20px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; color: #666; background: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); z-index: 10000; }
+    #__bundler_thumbnail { position: fixed; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #070818; z-index: 9999; }
+    #__bundler_thumbnail svg { width: 100%; height: 100%; object-fit: contain; }
+    #__bundler_placeholder { color: #999; font-size: 14px; }
+  </style>
+  <noscript>
+    <style>#__bundler_loading { display: none; }</style>
+    <div style="position:fixed;bottom:12px;left:12px;font:13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;color:#999;background:rgba(255,255,255,0.9);padding:6px 12px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.08);z-index:10000;">
+      This page requires JavaScript to display.
+    </div>
+  </noscript>
+</head>
+<body>
+  <div id="__bundler_thumbnail">
+  <svg viewBox="0 0 660 430" xmlns="http://www.w3.org/2000/svg">
+    <rect width="660" height="430" fill="#0B0D28"></rect>
+    <circle cx="330" cy="180" r="118" fill="#1A1E48"></circle>
+    <g fill="none" stroke="#F0FBFF" stroke-width="14" stroke-linecap="square" transform="translate(330 180) scale(4.4) translate(-20 -20)">
+      <path d="M20 4v32M20 12l9-6M20 12l-9-6M20 22l11-7M20 22L9 15M20 36c-7 0-11-5-12-10M20 36c7 0 11-5 12-10"></path>
+    </g>
+    <rect x="0" y="330" width="660" height="100" fill="#0A0B22"></rect>
+  </svg>
+</div>
+  <div id="__bundler_loading">Unpacking...</div>
+
+  <script>
+    
+document.addEventListener('DOMContentLoaded', async function() {
+  const loading = document.getElementById('__bundler_loading');
+  function setStatus(msg) { if (loading) loading.textContent = msg; }
+
+  const FONT_MIME = /^(font[/]|application[/](x-)?font-|application[/]vnd\.ms-fontobject)/i;
+  const MIME_TOKEN = /^[\w.+-]+[/][\w.+-]+$/;
+  function toBase64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+  }
+
+  // Error sink persists across replaceWith since it's on window, not the DOM.
+  window.addEventListener('error', function(e) {
+    // Failed resource loads (CSP-blocked links, scripts, images) fire plain
+    // events at the element — warn only; real JS errors carry message/error.
+    if (!e.message && !e.error && e.target && e.target !== window) {
+      console.warn('[bundle] resource failed to load:',
+        e.target.tagName, String(e.target.src || e.target.href || ''));
+      return;
+    }
+    var p = document.body || document.documentElement;
+    var d = document.getElementById('__bundler_err') || p.appendChild(document.createElement('div'));
+    d.id = '__bundler_err';
+    d.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;font:12px/1.4 ui-monospace,monospace;background:#2a1215;color:#ff8a80;padding:10px 14px;border-radius:8px;border:1px solid #5c2b2e;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto';
+    d.textContent = (d.textContent ? d.textContent + String.fromCharCode(10) : '') +
+      '[bundle] ' + (e.message || e.type) +
+      (e.filename ? ' (' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');
+  }, true);
+
+  try {
+    const manifestEl = document.querySelector('script[type="__bundler/manifest"]');
+    const templateEl = document.querySelector('script[type="__bundler/template"]');
+    if (!manifestEl || !templateEl) {
+      setStatus('Error: missing bundle data');
+      console.error('[bundler] Missing script tags — manifestEl:', !!manifestEl, 'templateEl:', !!templateEl);
+      return;
+    }
+
+    const manifest = JSON.parse(manifestEl.textContent);
+    let template = JSON.parse(templateEl.textContent);
+
+    // Nested page bundles (iframe targets). Each ships ONCE, in the ROOT
+    // document's manifest; frame srcs carry an about:blank#<uuid> marker
+    // instead of a substitutable uuid. Every document mints the blobs for
+    // its OWN frames — from local text at the root, or text obtained from
+    // its DIRECT parent over the relay protocol below — so each frame
+    // navigation stays same-origin with its initiator and a deduped page
+    // loads at any depth on any host, including a file:// download's
+    // opaque origins (where a blob minted by one document cannot be
+    // navigated to by another).
+    const pageOrderEl = document.querySelector('script[type="__bundler/page_order"]');
+    const pageOrder = pageOrderEl ? JSON.parse(pageOrderEl.textContent) : [];
+    const pageSet = new Set(pageOrder);
+    const pageTexts = {};
+
+    // ── Nested-page text protocol (parent-chain relay) ──
+    // Page bundles ship once, in the ROOT document's manifest. Every
+    // document mints the blobs for its OWN frames, obtaining page text
+    // through a strict parent-chain relay: a document only ever SENDS to
+    // its direct parent (which, for every document the publisher's own
+    // runtime minted, is another publisher document) and only ACCEPTS
+    // text from that direct parent; requests from below are honored only
+    // for the document's own child frames, and the ROOT never sends
+    // upward at all. That last rule is load-bearing: the artifact host's
+    // frame-ancestors allows claude.ai (and friends) to frame an
+    // artifact, so window.top can be a FOREIGN document — a top-addressed
+    // protocol would hand page uuids to that ancestor and accept forged
+    // "page text" from it, minting attacker HTML as an artifact-origin
+    // blob document. The chain never touches the ancestor: requests stop
+    // at the root, replies are origin-addressed per hop (never '*' when
+    // an origin exists), and both directions are origin-gated (on https
+    // a foreign sender's origin can never equal this document's; in
+    // opaque contexts — file:// — everything serializes as 'null', where
+    // an embedded EXTERNAL frame still fails the gate by carrying its
+    // own real origin, and a sandboxed child of such a frame is excluded
+    // by the own-child-frames check plus uuid unguessability). Shape is
+    // deny-by-default: one request form, one reply form, no error
+    // replies.
+    // window.origin is the SERIALIZED SECURITY origin ('null' in opaque
+    // contexts such as a sandboxed preview iframe) — location.origin is
+    // computed from the URL and stays 'https://…' even when the document
+    // is sandboxed, which would misgate every opaque chain.
+    const OWN_TARGET = /^https?:[/][/]/.test(window.origin || '')
+      ? window.origin
+      : '*';
+    function trustedOrigin(e) {
+      if (e.origin === window.origin) return true; // https chains; opaque==opaque
+      // file:// trees: Chrome serializes the file document's origin as
+      // 'file://' while the blob: documents it mints serialize as 'null',
+      // so the two legitimate shapes can never string-match — accept the
+      // pair in both directions. https origins never serialize as either,
+      // and sender identity (own child frame / direct parent) is checked
+      // separately.
+      return (
+        (e.origin === 'null' &&
+          (window.origin === 'file://' ||
+            window.location.protocol === 'file:')) ||
+        (/^file:/.test(e.origin) && window.origin === 'null')
+      );
+    }
+    // Non-empty only in the root document (nested bundles ship an empty
+    // island), so it doubles as the root marker: the root answers from
+    // local text and treats a miss as authoritative — never relaying to
+    // its (possibly foreign) parent.
+    const isPageRoot = pageOrder.length > 0;
+    const blobUrls = {};
+    const resourceBlobs = {};
+    const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    const pendingFrames = {}; // uuid -> [{el, frag}] awaiting text for own frames
+    const pendingRelays = {}; // uuid -> [childWindow] awaiting text to pass down
+    function mountPage(el, frag, text) {
+      const pageBlob = new Blob([text], { type: 'text/html' });
+      const u = URL.createObjectURL(pageBlob);
+      resourceBlobs[u] = pageBlob;
+      el.src = u + frag;
+    }
+    function deliverPage(uuid, text) {
+      const frames = pendingFrames[uuid];
+      delete pendingFrames[uuid];
+      if (frames) for (const f of frames) mountPage(f.el, f.frag, text);
+      const relays = pendingRelays[uuid];
+      delete pendingRelays[uuid];
+      if (relays) {
+        for (const cw of relays) {
+          try { cw.postMessage({ __bundler_page: uuid, __bundler_text: text }, OWN_TARGET); } catch (err) { /* gone */ }
+        }
+      }
+    }
+    function ownFrameWindows() {
+      const out = [];
+      for (const f of Array.from(document.querySelectorAll('iframe'))) {
+        try { if (f.contentWindow) out.push(f.contentWindow); } catch (err) { /* detached */ }
+      }
+      return out;
+    }
+    window.addEventListener('message', function (e) {
+      const d = e.data;
+      if (!d || typeof d !== 'object' || !e.source) return;
+      // Origin gate first; the structural checks below (own-child-frames
+      // for requests, direct-parent + solicited-uuid for replies, the
+      // root's never-relay rule) are what hold in fully opaque chains
+      // where origin strings can't discriminate — a sandboxed root's
+      // FOREIGN wrapper still fails all three even though both serialize
+      // as real-vs-'null' rather than matching.
+      if (!trustedOrigin(e)) return;
+      if (typeof d.__bundler_need === 'string' && UUID_SHAPE.test(d.__bundler_need)) {
+        // Requests are honored only for this document's own child frames.
+        if (ownFrameWindows().indexOf(e.source) < 0) return;
+        const uuid = d.__bundler_need;
+        const text = pageTexts[uuid];
+        if (typeof text === 'string') {
+          try { e.source.postMessage({ __bundler_page: uuid, __bundler_text: text }, OWN_TARGET); } catch (err) { /* gone */ }
+          return;
+        }
+        if (isPageRoot || window.parent === window) return; // authoritative miss
+        const waiting = pendingRelays[uuid];
+        if (waiting) {
+          if (waiting.indexOf(e.source) < 0) waiting.push(e.source);
+          return;
+        }
+        // Never-answered uuids would otherwise accumulate forever under a
+        // request spray; past the cap (far above any real page count) new
+        // relays are dropped rather than remembered.
+        if (Object.keys(pendingRelays).length >= 128) return;
+        pendingRelays[uuid] = [e.source];
+        window.parent.postMessage({ __bundler_need: uuid }, OWN_TARGET);
+      } else if (
+        typeof d.__bundler_page === 'string' &&
+        UUID_SHAPE.test(d.__bundler_page) &&
+        typeof d.__bundler_text === 'string'
+      ) {
+        // The shape test is load-bearing beyond tidiness: the solicited
+        // check below uses the in operator, which matches prototype keys
+        // ('__proto__', 'constructor') — an unshaped key would reach
+        // deliverPage and throw, painting the error banner.
+        // Text is accepted only from the direct parent — the document
+        // that minted this one.
+        if (e.source !== window.parent || window.parent === window) return;
+        if (!(d.__bundler_page in pendingFrames) && !(d.__bundler_page in pendingRelays)) return;
+        deliverPage(d.__bundler_page, d.__bundler_text);
+      }
+    });
+
+    const uuids = Object.keys(manifest);
+    setStatus('Unpacking ' + uuids.length + ' assets...');
+
+    await Promise.all(uuids.map(async (uuid) => {
+      const entry = manifest[uuid];
+      try {
+        const binaryStr = atob(entry.data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+        let finalBytes = bytes;
+        if (entry.compressed) {
+          if (typeof DecompressionStream !== 'undefined') {
+            const ds = new DecompressionStream('gzip');
+            const writer = ds.writable.getWriter();
+            const reader = ds.readable.getReader();
+            writer.write(bytes);
+            writer.close();
+            const chunks = [];
+            let totalLen = 0;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+              totalLen += value.length;
+            }
+            finalBytes = new Uint8Array(totalLen);
+            let offset = 0;
+            for (const chunk of chunks) { finalBytes.set(chunk, offset); offset += chunk.length; }
+          } else {
+            console.warn('DecompressionStream not available, asset ' + uuid + ' may not render');
+          }
+        }
+
+        if (pageSet.has(uuid)) {
+          pageTexts[uuid] = new TextDecoder().decode(finalBytes);
+          return;
+        }
+        if (FONT_MIME.test(entry.mime) && MIME_TOKEN.test(entry.mime)) {
+          // Strict artifact hosts allow font-src data: but not blob:.
+          blobUrls[uuid] = 'data:' + entry.mime + ';base64,' +
+            (entry.compressed ? toBase64(finalBytes) : entry.data);
+        } else {
+          const blob = new Blob([finalBytes], { type: entry.mime });
+          blobUrls[uuid] = URL.createObjectURL(blob);
+          resourceBlobs[blobUrls[uuid]] = blob;
+        }
+      } catch (err) {
+        console.error('Failed to decode asset ' + uuid + ':', err);
+        const blob = new Blob([], { type: entry.mime });
+        blobUrls[uuid] = URL.createObjectURL(blob);
+        resourceBlobs[blobUrls[uuid]] = blob;
+      }
+    }));
+
+    const extResEl = document.querySelector('script[type="__bundler/ext_resources"]');
+    const extResources = extResEl ? JSON.parse(extResEl.textContent) : [];
+    const resourceMap = {};
+    for (const entry of extResources) {
+      if (blobUrls[entry.uuid]) resourceMap[entry.id] = blobUrls[entry.uuid];
+    }
+
+    // Artifact-host CSP (connect-src 'self') refuses fetch() of blob: URLs —
+    // consumers read these Blobs directly. Survives the swap like the error sink.
+    window.__resourceBlobs = resourceBlobs;
+
+    setStatus('Rendering...');
+    // Page uuids have no blob here — they ride inside about:blank#<uuid>
+    // frame markers the pass below resolves after the swap.
+    for (const uuid of uuids) {
+      if (pageSet.has(uuid)) continue;
+      template = template.split(uuid).join(blobUrls[uuid]);
+    }
+
+    // Strip integrity + crossorigin — blob URLs from a file:// document inherit
+    // a null origin, so crossorigin forces a CORS fetch that SRI then rejects.
+    // The manifest bytes are ours; SRI protects against CDN compromise, not this.
+    template = template.replace(/\s+integrity="[^"]*"/gi, '').replace(/\s+crossorigin="[^"]*"/gi, '');
+
+    const resourceScript = '<script>window.__resources = ' +
+      JSON.stringify(resourceMap).replace(/<\//g, '<\\/') +
+      ';</' + 'script>';
+    // Inject after <head> so the DOCTYPE stays first; prepending the script
+    // would push the parser into quirks mode. DOMParser always emits a <head>
+    // (synthesizing one if the source HTML omitted it) but may carry
+    // attributes through, so match the full opening tag. slice() rather than
+    // replace() keeps us clear of $-pattern substitution in resourceScript.
+    const headOpen = template.match(/<head[^>]*>/i);
+    if (headOpen) {
+      const i = headOpen.index + headOpen[0].length;
+      template = template.slice(0, i) + resourceScript + template.slice(i);
+    }
+
+    // Parse the template and swap the root element. Scripts inserted via
+    // DOMParser/replaceWith are inert per spec — re-create each with
+    // createElement so they execute, awaiting onload for src scripts to
+    // preserve ordering (React before ReactDOM before Babel before text/babel).
+    const doc = new DOMParser().parseFromString(template, 'text/html');
+    document.documentElement.replaceWith(doc.documentElement);
+
+    // Resolve page-frame markers: mint this document's own blob for each
+    // framed page — from local text when this is the root, otherwise by
+    // asking the direct parent over the relay protocol above. An
+    // unanswered request leaves the frame on about:blank, the same
+    // degraded state as a refused embed.
+    {
+      const MARKER = /^about:blank#([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(#.*)?$/;
+      const needed = [];
+      for (const el of Array.from(document.querySelectorAll('iframe'))) {
+        const m = MARKER.exec(el.getAttribute('src') || '');
+        if (!m) continue;
+        const text = pageTexts[m[1]];
+        if (typeof text === 'string') {
+          mountPage(el, m[2] || '', text);
+        } else if (window.parent !== window && !isPageRoot) {
+          const had = pendingFrames[m[1]];
+          (pendingFrames[m[1]] = had || []).push({ el: el, frag: m[2] || '' });
+          if (!had) needed.push(m[1]);
+        }
+      }
+      for (const uuid of needed) {
+        window.parent.postMessage({ __bundler_need: uuid }, OWN_TARGET);
+      }
+    }
+
+    const dead = Array.from(document.scripts);
+    for (const old of dead) {
+      const s = document.createElement('script');
+      for (const a of old.attributes) s.setAttribute(a.name, a.value);
+      s.textContent = old.textContent;
+      // text/babel scripts with a src: read and inline. transformScriptTags
+      // does XHR against the src, but blob:null/ from a file:// origin is
+      // silently dropped. Inlining makes it a plain inline babel script,
+      // which transformScriptTags handles unconditionally.
+      if ((s.type === 'text/babel' || s.type === 'text/jsx') && s.src) {
+        const pre = resourceBlobs[s.src.split('#')[0]];
+        s.textContent = pre ? await pre.text() : await (await fetch(s.src)).text();
+        s.removeAttribute('src');
+      }
+      const p = s.src ? new Promise(function(r) { s.onload = s.onerror = r; }) : null;
+      old.replaceWith(s);
+      if (p) await p;
+    }
+    // Babel standalone auto-transforms type=text/babel on DOMContentLoaded,
+    // which fired before we swapped the document. Trigger manually if present.
+    if (window.Babel && typeof window.Babel.transformScriptTags === 'function') {
+      window.Babel.transformScriptTags();
+    }
+  } catch (err) {
+    setStatus('Error unpacking: ' + err.message);
+    console.error('Bundle unpack error:', err);
+  }
+});
+
+  </script>
+
+  <script type="__bundler/manifest">
+{}
+  </script>
+
+  <script type="__bundler/ext_resources">
+[]
+  </script>
+
+  <script type="__bundler/page_order">
+[]
+  </script>
+
+  <script type="__bundler/template">
+"<!DOCTYPE html>\n<html lang=\"ru\"><head>\n<meta charset=\"UTF-8\">\n<title>Yggdrasil<\u002Ftitle>\n<style>\n  html, body { height: 100%; margin: 0; background: transparent; overflow: hidden; }\n\n  body {\n    font: 400 13px/1.5 \"Segoe UI\", system-ui, sans-serif;\n    -webkit-user-select: none; user-select: none;\n    opacity: 1; transition: opacity .24s ease;\n  }\n  body.out { opacity: 0; }\n\n  .frame {\n    position: relative; height: 100%; border-radius: 14px; overflow: hidden;\n    background:\n      radial-gradient(40% 32% at 50% 22%, rgba(180, 235, 250, .24) 0%, rgba(120, 190, 230, .10) 42%, rgba(30, 35, 82, 0) 76%),\n      radial-gradient(94% 76% at 50% 14%, #2A3168 0%, #1A1E48 46%, #0B0D28 80%, #070818 100%);\n    box-shadow: inset 0 0 0 1px rgba(160, 190, 240, .16);\n  }\n\n  .scene { position: absolute; inset: 0; width: 100%; height: 100%; }\n\n  .mist {\n    position: absolute; left: -14%; right: -14%; top: 44%; height: 150px;\n    background: linear-gradient(to bottom,\n      rgba(126, 143, 205, 0), rgba(133, 154, 210, .2), rgba(126, 143, 205, 0));\n    filter: blur(12px);\n    animation: drift 26s linear infinite alternate;\n  }\n  @keyframes drift { from { transform: translateX(-5%); } to { transform: translateX(5%); } }\n\n  /* Горизонт: тьма к низу кадра. Взято из brand-identity — подпись и полоса\n     прогресса перестают конкурировать с силуэтами древ. */\n  .horizon {\n    position: absolute; left: 0; right: 0; bottom: 0; height: 168px; z-index: 5;\n    background: linear-gradient(to bottom,\n      rgba(7, 8, 24, 0) 0%, rgba(7, 8, 24, .74) 58%, rgba(7, 8, 24, .96) 100%);\n    pointer-events: none;\n  }\n\n  .mote {\n    position: absolute; border-radius: 50%; background: rgba(198, 238, 250, .75);\n    animation: rise linear infinite;\n  }\n  @keyframes rise {\n    0%   { transform: translateY(0) translateX(0); opacity: 0; }\n    12%  { opacity: .85; }\n    88%  { opacity: .5; }\n    100% { transform: translateY(-290px) translateX(16px); opacity: 0; }\n  }\n\n  .stage {\n    position: absolute; inset: 0; z-index: 6;\n    display: flex; flex-direction: column; align-items: center; justify-content: center;\n    gap: 0; padding-bottom: 40px;\n  }\n\n  /* Знак-руна — источник света в кадре и одновременно индикатор загрузки:\n     свет поднимается по руне снизу вверх, корень → ствол → ветви. */\n  .sigil { position: relative; opacity: 0; animation: emerge .9s ease-out forwards; }\n  .rune-fill { opacity: 0; transition: opacity .3s ease; }\n  .sigil.metered .rune-base { opacity: .24; }\n  .sigil.metered .rune-fill { opacity: 1; }\n  #riserect { transition: y .42s cubic-bezier(.4, 0, .2, 1), height .42s cubic-bezier(.4, 0, .2, 1); }\n  .sigil::before {\n    content: \"\"; position: absolute; left: 50%; top: 50%;\n    width: 176px; height: 176px; transform: translate(-50%, -50%);\n    background: radial-gradient(closest-side,\n      rgba(240, 251, 255, .46) 0%, rgba(150, 220, 245, .24) 34%, rgba(110, 190, 235, 0) 72%);\n    animation: breathe 6s ease-in-out infinite;\n  }\n  .sigil svg { position: relative; display: block; }\n\n  @keyframes breathe {\n    0%, 100% { opacity: .8;  transform: translate(-50%, -50%) scale(1); }\n    50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.08); }\n  }\n\n  .wordmark {\n    width: 398px; height: auto; margin-top: 16px;\n    opacity: 0; animation: appear .5s ease-out .22s forwards;\n  }\n  /* Вордмарк не проявляется, а вырезается: штрих идёт по буквам.\n     README называет его «вырезанным вектором» — теперь это видно. */\n  .wordmark path {\n    stroke-dasharray: 430; stroke-dashoffset: 430;\n    animation: carve 1.6s cubic-bezier(.32, .72, .18, 1) .3s forwards;\n  }\n  @keyframes carve { to { stroke-dashoffset: 0; } }\n  @keyframes appear { to { opacity: 1; } }\n\n  /* Руны подчинены вордмарку: тоньше, уже, глуше — это подпись, не второй логотип */\n  .runes {\n    margin-top: 16px; opacity: 0;\n    animation: emergeRunes .9s ease-out .62s forwards;\n  }\n\n  .kenning {\n    margin-top: 16px; font-size: 10px; letter-spacing: .34em; text-transform: uppercase;\n    color: #BCEAF4; opacity: 0;\n    animation: emergeSoft .9s ease-out .92s forwards;\n  }\n\n  @keyframes emerge {\n    from { opacity: 0; transform: translateY(8px); }\n    to   { opacity: 1; transform: none; }\n  }\n  @keyframes emergeRunes {\n    from { opacity: 0; transform: translateY(7px); }\n    to   { opacity: .34; transform: none; }\n  }\n  @keyframes emergeSoft {\n    from { opacity: 0; transform: translateY(6px); }\n    to   { opacity: .82; transform: none; }\n  }\n\n  /* Иней не появляется готовым — он нарастает, как узор на стекле */\n  .thicket-draw {\n    stroke-dasharray: 92; stroke-dashoffset: 92;\n    animation: frostgrow 1.5s ease-out .4s forwards;\n  }\n  @keyframes frostgrow { to { stroke-dashoffset: 0; } }\n  .bloom { opacity: 0; animation: appear .8s ease-out 1.5s forwards; }\n\n  .foot {\n    position: absolute; left: 0; right: 0; bottom: 0; z-index: 7;\n    padding: 0 22px 15px;\n  }\n\n  .row { display: flex; align-items: baseline; gap: 14px; }\n  .status {\n    color: #BCEAF4; font-size: 12px; letter-spacing: .02em;\n    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\n  }\n  /* Правый слот — процент. Прежде здесь стояло слово Yggdrasil: третье\n     повторение имени в одном кадре и ноль информации о загрузке. */\n  .pct {\n    margin-left: auto; flex: none;\n    font-family: \"Cascadia Mono\", Consolas, ui-monospace, monospace;\n    font-size: 11px; font-variant-numeric: tabular-nums;\n    color: #6E769B; opacity: 0; transition: opacity .2s ease;\n  }\n  .pct.on { opacity: 1; }\n\n  /* Сбой запуска: свет разлома гаснет, руна краснеет.\n     Единственный тревожный цвет проекта — и только по делу. */\n  .status.err { color: #E0655C; }\n  .frame.err .sigil::before { opacity: .2; animation: none; }\n  .frame.err .rune-fill { stroke: #E0655C; }\n  .frame.err .rune-base { opacity: .18; }\n\n  @media (prefers-reduced-motion: reduce) {\n    .sigil::before, .mist, .mote { animation: none; }\n    .sigil, .wordmark, .runes, .kenning, .bloom { animation-duration: .01s; }\n    .wordmark path, .thicket-draw { animation: none; stroke-dashoffset: 0; }\n  }\n<\u002Fstyle>\n\n<\u002Fhead>\n<body>\n  <div class=\"frame\">\n    <svg class=\"scene\" viewBox=\"0 0 660 430\" preserveAspectRatio=\"xMidYMid slice\" aria-hidden=\"true\">\n      <!-- дальний ярус: стволы в дымке -->\n      <g fill=\"#39406F\" opacity=\".45\">\n        <path d=\"M110 430V180c0-26-9-43-19-60 19 5 33 17 39 37 5-21 17-34 34-43-9 19-10 37-5 59 4 17 5 30 5 49v208z\"><\u002Fpath>\n        <path d=\"M540 430V200c0-30-10-48-24-67 23 6 40 20 47 45 6-26 20-41 42-51-11 23-13 43-6 69 5 19 6 36 6 59v145z\"><\u002Fpath>\n        <path d=\"M330 430V246c0-20-7-33-15-46 15 4 25 13 30 28 4-16 13-26 26-33-7 15-8 28-4 45 3 13 4 23 4 37v153z\"><\u002Fpath>\n      <\u002Fg>\n\n      <!-- ближний ярус: исполины по краям кадра -->\n      <g fill=\"#22254A\">\n        <path d=\"M0 430V100c30 6 54 22 68 48 12-37 28-62 59-79-19 35-22 67-10 105 9 30 12 55 12 90v166z\"><\u002Fpath>\n        <path d=\"M660 430V70c-41 6-74 26-94 59-14-44-36-73-74-95 24 43 28 82 14 130-10 36-13 67-13 108v158z\"><\u002Fpath>\n        <path d=\"M232 430V232c0-26-9-42-21-59 20 6 35 19 42 41 6-23 18-37 37-46-10 20-11 38-5 61 5 18 6 32 6 53v148z\"><\u002Fpath>\n        <path d=\"M430 430V250c0-22-8-36-18-50 17 5 30 16 36 35 5-20 15-31 31-39-8 17-9 32-4 52 4 15 5 27 5 45v137z\"><\u002Fpath>\n      <\u002Fg>\n\n      <!-- Ледяные папоротники.\n           Прежде это были четыре звёздочки из прямых лучей, выходящих из одной\n           точки. Теперь один куст = изогнутый стебель + перистые вайи, у каждой\n           вайи свои иголки: так растёт настоящий морозный узор на стекле.\n           Куст описан один раз и расставлен через <use> с разным масштабом\n           и наклоном — кусты одной породы, но ни один не повторяет соседа. -->\n      <defs>\n        <filter id=\"frostglow\" x=\"-40%\" y=\"-40%\" width=\"180%\" height=\"180%\">\n          <feGaussianBlur stdDeviation=\"2.4\"><\u002FfeGaussianBlur>\n        <\u002Ffilter>\n\n        <!-- вайя: растёт вправо-вверх, с тремя иголками -->\n        <g id=\"frond\">\n          <path d=\"M0 0C6 -1.6 11 -4.6 16 -11\"><\u002Fpath>\n          <path d=\"M4.6 -1.4 L6.6 -6.2M8.6 -3.4 L10.8 -8.2M12.2 -6.4 L14 -11\"><\u002Fpath>\n        <\u002Fg>\n\n        <!-- куст: стебель клонится, вайи мельчают к вершине -->\n        <g id=\"fern\">\n          <path d=\"M0 0C-2 -13 -1 -26 2 -36c1.5 -5 2.4 -8.6 3 -12\"><\u002Fpath>\n          <use href=\"#frond\" transform=\"translate(-0.9 -7.5) scale(-1.06 1.06)\"><\u002Fuse>\n          <use href=\"#frond\" transform=\"translate(0.9 -9.5) scale(0.98)\"><\u002Fuse>\n          <use href=\"#frond\" transform=\"translate(-0.8 -16.5) scale(-0.86 0.86)\"><\u002Fuse>\n          <use href=\"#frond\" transform=\"translate(0.8 -18.5) scale(0.78)\"><\u002Fuse>\n          <use href=\"#frond\" transform=\"translate(0 -25) scale(-0.62 0.62)\"><\u002Fuse>\n          <use href=\"#frond\" transform=\"translate(1.4 -27) scale(0.56)\"><\u002Fuse>\n          <use href=\"#frond\" transform=\"translate(1.6 -32.5) scale(-0.42 0.42)\"><\u002Fuse>\n          <use href=\"#frond\" transform=\"translate(2.6 -34.5) scale(0.36)\"><\u002Fuse>\n        <\u002Fg>\n\n        <!-- заросль целиком: крупные кусты с подростом у корня -->\n        <g id=\"thicket\">\n          <use href=\"#fern\" transform=\"translate(64 396) rotate(-6) scale(1.55)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(104 402) rotate(9) scale(0.95)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(38 400) rotate(-15) scale(0.62)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(600 384) rotate(7) scale(1.5)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(564 393) rotate(-11) scale(0.9)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(628 390) rotate(16) scale(0.6)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(262 392) rotate(-5) scale(1.15)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(292 397) rotate(11) scale(0.66)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(452 396) rotate(6) scale(1.2)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(422 400) rotate(-9) scale(0.7)\"><\u002Fuse>\n          <use href=\"#fern\" transform=\"translate(348 402) rotate(3) scale(0.72)\"><\u002Fuse>\n        <\u002Fg>\n      <\u002Fdefs>\n\n      <!-- почва: корни уходят в темноту -->\n      <path d=\"M0 430v-48c68-15 121-5 169 12 52 19 100 25 165 12 66-13 126-19 191-6 52 11 98 12 135 4v26z\" fill=\"#111330\"><\u002Fpath>\n      <path d=\"M0 430v-27c84-16 141-2 200 14 54 16 110 18 173 4 66-14 131-17 196-3 37 8 72 10 91 7v5z\" fill=\"#0A0B22\"><\u002Fpath>\n          <!-- иней светится: широкий размытый след под тонким чётким штрихом -->\n      <use class=\"thicket-draw\" href=\"#thicket\" fill=\"none\" stroke=\"#9FE2F2\" stroke-width=\"4\" stroke-linecap=\"round\" opacity=\".24\" filter=\"url(#frostglow)\"><\u002Fuse>\n      <use class=\"thicket-draw\" href=\"#thicket\" fill=\"none\" stroke=\"#8FD9EC\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\".62\"><\u002Fuse>\n\n      <!-- соцветия сидят на вершинах кустов, каждое в своём ореоле -->\n      <g class=\"bloom\">\n        <g fill=\"#E294C6\" opacity=\".2\">\n          <circle cx=\"72\" cy=\"323\" r=\"6.5\"><\u002Fcircle><circle cx=\"608\" cy=\"311\" r=\"6.5\"><\u002Fcircle>\n          <circle cx=\"268\" cy=\"338\" r=\"5.5\"><\u002Fcircle><circle cx=\"458\" cy=\"340\" r=\"5.5\"><\u002Fcircle>\n        <\u002Fg>\n        <g fill=\"#E294C6\" opacity=\".78\">\n          <circle cx=\"72\" cy=\"323\" r=\"2.6\"><\u002Fcircle><circle cx=\"59\" cy=\"340\" r=\"2\"><\u002Fcircle><circle cx=\"85\" cy=\"337\" r=\"1.7\"><\u002Fcircle>\n          <circle cx=\"608\" cy=\"311\" r=\"2.6\"><\u002Fcircle><circle cx=\"595\" cy=\"328\" r=\"2\"><\u002Fcircle><circle cx=\"621\" cy=\"325\" r=\"1.7\"><\u002Fcircle>\n          <circle cx=\"268\" cy=\"338\" r=\"2.1\"><\u002Fcircle><circle cx=\"256\" cy=\"353\" r=\"1.7\"><\u002Fcircle>\n          <circle cx=\"458\" cy=\"340\" r=\"2.1\"><\u002Fcircle><circle cx=\"445\" cy=\"354\" r=\"1.7\"><\u002Fcircle>\n        <\u002Fg>\n      <\u002Fg>\n\n\n    <\u002Fsvg>\n\n    <div class=\"mist\"><\u002Fdiv>\n    <div class=\"horizon\"><\u002Fdiv>\n\n    <div class=\"stage\">\n      <div class=\"sigil\" id=\"sigil\" role=\"progressbar\" aria-label=\"Загрузка\" aria-valuemin=\"0\" aria-valuemax=\"100\">\n        <svg width=\"52\" height=\"52\" viewBox=\"0 0 40 40\" fill=\"none\" stroke=\"#F0FBFF\" stroke-width=\"2.4\" stroke-linecap=\"square\" aria-hidden=\"true\">\n          <defs>\n            <clipPath id=\"riseclip\">\n              <rect id=\"riserect\" x=\"-4\" y=\"44\" width=\"48\" height=\"0\"><\u002Frect>\n            <\u002FclipPath>\n          <\u002Fdefs>\n          <path class=\"rune-base\" d=\"M20 4v32M20 12l9-6M20 12l-9-6M20 22l11-7M20 22L9 15M20 36c-7 0-11-5-12-10M20 36c7 0 11-5 12-10\"><\u002Fpath>\n          <path class=\"rune-fill\" clip-path=\"url(#riseclip)\" style=\"filter: drop-shadow(0 0 5px rgba(150, 220, 245, .85))\" d=\"M20 4v32M20 12l9-6M20 12l-9-6M20 22l11-7M20 22L9 15M20 36c-7 0-11-5-12-10M20 36c7 0 11-5 12-10\"><\u002Fpath>\n        <\u002Fsvg>\n      <\u002Fdiv>\n\n      <svg class=\"wordmark\" viewBox=\"-26 -30 694 160\" role=\"img\" aria-label=\"YGGDRASIL\">\n        <defs>\n          <!-- userSpaceOnUse обязателен: буква I — вертикальный штрих с нулевой\n               шириной bbox, в objectBoundingBox градиент для неё не вычисляется -->\n          <linearGradient id=\"carve\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"100\" gradientUnits=\"userSpaceOnUse\">\n            <stop offset=\"0%\" stop-color=\"#FFFFFF\"><\u002Fstop>\n            <stop offset=\"52%\" stop-color=\"#DCF2FB\"><\u002Fstop>\n            <stop offset=\"100%\" stop-color=\"#8FC4DE\"><\u002Fstop>\n          <\u002FlinearGradient>\n          <!-- halo мягче прежнего: на 398px сильное свечение съедало засечки штрихов -->\n          <filter id=\"halo\" x=\"-30%\" y=\"-40%\" width=\"160%\" height=\"190%\">\n            <feGaussianBlur stdDeviation=\"6\" result=\"b\"><\u002FfeGaussianBlur>\n            <feMerge><feMergeNode in=\"b\"><\u002FfeMergeNode><feMergeNode in=\"SourceGraphic\"><\u002FfeMergeNode><\u002FfeMerge>\n          <\u002Ffilter>\n        <\u002Fdefs>\n        <g fill=\"none\" stroke=\"url(#carve)\" stroke-width=\"9\" stroke-linecap=\"square\" stroke-linejoin=\"miter\" filter=\"url(#halo)\">\n          <g transform=\"translate(0,0)\"><path d=\"M0 0 L30 52 L60 0 M30 52 L30 100\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(82,0)\"><path d=\"M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(164,0)\"><path d=\"M58 22 L38 2 L20 2 L2 20 L2 80 L20 98 L38 98 L58 78 L58 54 L36 54\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(246,0)\"><path d=\"M4 2 L4 98 M4 2 L34 2 L56 24 L56 76 L34 98 L4 98\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(326,0)\"><path d=\"M4 2 L4 98 M4 2 L34 2 L54 20 L54 38 L34 56 L4 56 M30 56 L56 98\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(404,0)\"><path d=\"M2 98 L30 2 L58 98 M14 64 L46 64\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(486,0)\"><path d=\"M50 18 L36 2 L16 2 L2 18 L2 32 L14 46 L38 54 L50 68 L50 82 L36 98 L16 98 L2 82\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(560,0)\"><path d=\"M6 2 L6 98\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(594,0)\"><path d=\"M4 2 L4 98 L46 98\"><\u002Fpath><\u002Fg>\n        <\u002Fg>\n      <\u002Fsvg>\n\n      <svg class=\"runes\" width=\"196\" height=\"30\" viewBox=\"-4 -4 298 52\" aria-hidden=\"true\">\n        <g fill=\"none\" stroke=\"#BCEAF4\" stroke-width=\"3.4\" stroke-linecap=\"square\">\n          <g transform=\"translate(0,0)\"><path d=\"M10 6 L10 34 M10 6 L18 2 M10 34 L2 38\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(30,0)\"><path d=\"M2 2 L26 38 M26 2 L2 38\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(68,0)\"><path d=\"M2 2 L26 38 M26 2 L2 38\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(106,0)\"><path d=\"M3 2 L3 38 M25 2 L25 38 M3 2 L25 38 M3 38 L25 2\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(144,0)\"><path d=\"M4 2 L4 38 M4 2 L20 10 L4 20 M4 20 L20 38\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(178,0)\"><path d=\"M4 2 L4 38 M4 6 L18 14 M4 20 L18 28\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(210,0)\"><path d=\"M18 2 L4 14 L18 26 L4 38\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(242,0)\"><path d=\"M5 2 L5 38\"><\u002Fpath><\u002Fg>\n          <g transform=\"translate(262,0)\"><path d=\"M5 2 L5 38 M5 2 L17 14\"><\u002Fpath><\u002Fg>\n        <\u002Fg>\n      <\u002Fsvg>\n\n      <div class=\"kenning\">What is anchored cannot be unmade<\u002Fdiv>\n    <\u002Fdiv>\n\n    <div class=\"foot\">\n      <div class=\"row\">\n        <span class=\"status\" id=\"status\">Запуск…<\u002Fspan>\n        <span class=\"pct\" id=\"pct\">0%<\u002Fspan>\n      <\u002Fdiv>\n    <\u002Fdiv>\n  <\u002Fdiv>\n\n<script>\n  // ---- API для main-процесса (вызывается через executeJavaScript) ----------\n  var elStatus = document.getElementById(\"status\");\n  var elSigil = document.getElementById(\"sigil\");\n  var elRise = document.getElementById(\"riserect\");\n  var elPct = document.getElementById(\"pct\");\n\n  // splashStatus(\"Проверка реестра\")            — текст этапа\n  window.splashStatus = function (text) {\n    if (elStatus) elStatus.textContent = text;\n  };\n\n  // splashProgress(0…1) — свет поднимается по руне снизу вверх.\n  // Пока не вызван, знак просто светится и дышит: ложного прогресса нет.\n  window.splashProgress = function (p) {\n    p = Math.max(0, Math.min(1, Number(p) || 0));\n    elSigil.classList.add(\"metered\");\n    // 40 — высота viewBox руны; +5 снизу, чтобы засветка накрывала корень\n    elRise.setAttribute(\"y\", (40 - 40 * p).toFixed(2));\n    elRise.setAttribute(\"height\", (40 * p + 5).toFixed(2));\n    elSigil.setAttribute(\"aria-valuenow\", Math.round(p * 100));\n    elPct.textContent = Math.round(p * 100) + \"%\";\n    elPct.classList.add(\"on\");\n  };\n\n  // splashError(\"RPC-узел не ответил\") — запуск не удался, кадр это признаёт\n  window.splashError = function (text) {\n    elStatus.textContent = text || \"Не удалось запустить\";\n    elStatus.classList.add(\"err\");\n    document.querySelector(\".frame\").classList.add(\"err\");\n    elSigil.classList.add(\"metered\");\n    elRise.setAttribute(\"y\", \"-4\");\n    elRise.setAttribute(\"height\", \"48\");\n    elPct.classList.remove(\"on\");\n  };\n\n  window.splashFadeOut = function () { document.body.classList.add(\"out\"); };\n\n  // ---- Летящие искры: кадр не должен быть мёртвым ---------------------------\n  (function () {\n    if (matchMedia(\"(prefers-reduced-motion: reduce)\").matches) return;\n    var frame = document.querySelector(\".frame\");\n    for (var i = 0; i < 18; i++) {\n      var m = document.createElement(\"div\");\n      var s = Math.random() * 1.9 + 0.7;\n      m.className = \"mote\";\n      m.style.width = m.style.height = s.toFixed(1) + \"px\";\n      m.style.left = (Math.random() * 100).toFixed(1) + \"%\";\n      m.style.top = (55 + Math.random() * 50).toFixed(1) + \"%\";\n      m.style.animationDuration = (7 + Math.random() * 9).toFixed(1) + \"s\";\n      m.style.animationDelay = (-Math.random() * 12).toFixed(1) + \"s\";\n      m.style.opacity = (Math.random() * 0.5 + 0.3).toFixed(2);\n      frame.appendChild(m);\n    }\n  })();\n<\u002Fscript>\n\n\n<\u002Fbody><\u002Fhtml>"
+  </script>
+</body>
+</html>

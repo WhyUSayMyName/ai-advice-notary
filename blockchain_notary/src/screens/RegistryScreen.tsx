@@ -2,6 +2,7 @@ import {
   Card,
   Chip,
   EmptyState,
+  Hash,
   Pill,
   Stat,
   short,
@@ -31,11 +32,13 @@ export function RegistryScreen({
   auditMap,
   queuedCount,
   onOpen,
+  onCopied,
 }: {
   artifacts: ArtifactRecord[]
   auditMap: Map<number, AuditResult>
   queuedCount: number
   onOpen: (a: ArtifactRecord) => void
+  onCopied: (v: string) => void
 }) {
   const anchored = artifacts.filter((a) => a.notarized).length
   const versions = artifacts.reduce((sum, a) => sum + a.version, 0)
@@ -81,7 +84,17 @@ export function RegistryScreen({
                     <tr
                       key={a.id}
                       onClick={() => onOpen(a)}
-                      className="cursor-pointer border-b border-line last:border-0 hover:bg-row-hover"
+                      // Реестр должен открываться и без мыши: строка — элемент управления
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Открыть ${a.display_name}`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          onOpen(a)
+                        }
+                      }}
+                      className="cursor-pointer border-b border-line outline-offset-[-2px] last:border-0 hover:bg-row-hover focus-visible:bg-row-hover"
                     >
                       <td className="max-w-[420px] px-3.5 py-2.5">
                         <div className="truncate font-medium">
@@ -93,7 +106,9 @@ export function RegistryScreen({
                           {fileDir(a.file_path)}
                         </div>
                       </td>
-                      <td className="mono px-3.5 py-2.5 text-faint">{short(a.hash)}</td>
+                      <td className="px-3.5 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <Hash value={a.hash} onCopied={onCopied} />
+                      </td>
                       <td className="num px-3.5 py-2.5">v{a.version}</td>
                       <td className="px-3.5 py-2.5">
                         <Pill tone={AUDIT_TONE[status]}>{AUDIT_LABEL[status]}</Pill>

@@ -43,6 +43,61 @@ export function Pill({ tone = "mut", children }: { tone?: Tone; children: React.
   )
 }
 
+/**
+ * Хеш — главный контент приложения, поэтому у него собственные правила:
+ * человек сверяет первые и последние символы, они выделены; клик копирует
+ * полное значение. Усечение везде одинаковое.
+ */
+export function Hash({
+  value,
+  full = false,
+  onCopied,
+  className = "",
+}: {
+  value: string | null | undefined
+  /** Показать целиком — на карточках, где хеш и есть содержание */
+  full?: boolean
+  onCopied?: (value: string) => void
+  className?: string
+}) {
+  if (!value) return <span className="text-faint">—</span>
+
+  const body = value.startsWith("0x") ? value.slice(2) : value
+  const head = body.slice(0, 4)
+  const tail = body.slice(-4)
+  const middle = full ? body.slice(4, -4) : "…"
+
+  const copy = () => {
+    void navigator.clipboard.writeText(value).then(() => onCopied?.(value))
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title="Скопировать полный хеш"
+      className={`mono group inline-flex max-w-full items-baseline rounded-[4px] text-left text-faint transition-colors hover:text-muted ${className}`}
+    >
+      <span className="opacity-60">0x</span>
+      <span className="text-ink">{head}</span>
+      <span className={full ? "break-all" : ""}>{middle}</span>
+      <span className="text-ink">{tail}</span>
+    </button>
+  )
+}
+
+/** Короткое подтверждение действия — живёт пару секунд и исчезает */
+export function Toast({ text }: { text: string | null }) {
+  if (!text) return null
+  return (
+    <div className="pointer-events-none fixed bottom-14 left-1/2 z-50 -translate-x-1/2">
+      <div className="rounded-[var(--radius-s)] border border-line2 bg-panel2 px-3 py-1.5 text-[12px] text-ink shadow-[var(--shadow)]">
+        {text}
+      </div>
+    </div>
+  )
+}
+
 export function Chip({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex w-fit items-center gap-1.5 whitespace-nowrap rounded border border-line px-1.5 py-px text-[11px] text-muted">

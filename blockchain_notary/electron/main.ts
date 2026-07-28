@@ -163,10 +163,10 @@ ipcMain.handle("evidence:export", async (_e, rpcUrl?: string) => {
 
 /**
  * Минимальное время показа заставки. Композиция собирается каскадом —
- * знак, вордмарк, руны, кеннинг — и завершается около 1,8 с; даём ей
- * постоять секунду целиком, иначе она гаснет сразу после появления.
+ * знак, резьба вордмарка по буквам, руны, кеннинг — и завершается около
+ * 2,25 с; даём ей постоять целиком, иначе она гаснет сразу после сборки.
  */
-const SPLASH_MIN_MS = 2800
+const SPLASH_MIN_MS = 3000
 
 function createSplash() {
   splash = new BrowserWindow({
@@ -191,12 +191,28 @@ function createSplash() {
   }
 }
 
-/** Строка статуса на заставке; к моменту вызова окно может быть уже закрыто */
-function splashStatus(text: string) {
+/** Вызов функции заставки; к этому моменту окно может быть уже закрыто */
+function splashCall(fn: string, ...args: unknown[]) {
   if (!splash || splash.isDestroyed()) return
-  splash.webContents
-    .executeJavaScript(`window.splashStatus && window.splashStatus(${JSON.stringify(text)})`)
-    .catch(() => {})
+  const call = `window.${fn} && window.${fn}(${args.map((a) => JSON.stringify(a)).join(", ")})`
+  splash.webContents.executeJavaScript(call).catch(() => {})
+}
+
+/**
+ * Этапы запуска. Доля — не выдумка «для красоты»: каждый шаг соответствует
+ * реальной работе, а свет на руне поднимается ровно по ним.
+ */
+const STAGES = {
+  registry: { p: 0.25, text: "Открытие локального реестра" },
+  recovery: { p: 0.6, text: "Сверка очереди фиксаций" },
+  renderer: { p: 0.9, text: "Подготовка интерфейса" },
+  ready: { p: 1, text: "Готово" },
+} as const
+
+function splashStage(stage: keyof typeof STAGES, textOverride?: string) {
+  const { p, text } = STAGES[stage]
+  splashCall("splashStatus", textOverride ?? text)
+  splashCall("splashProgress", p)
 }
 
 async function closeSplash() {
@@ -206,7 +222,7 @@ async function closeSplash() {
   splash = null
 
   try {
-    await w.webContents.executeJavaScript(`document.body.classList.add("out")`)
+    await w.webContents.executeJavaScript(`window.splashFadeOut && window.splashFadeOut()`)
     setTimeout(() => {
       if (!w.isDestroyed()) w.destroy()
     }, 260)
@@ -265,22 +281,29 @@ app.whenReady().then(() => {
 
   // Recovery: незавершённые фиксации сверяются с чейном, воркер стартует в фоне.
   // Недоступность узла на старте не должна ронять приложение — главное окно
-  // откроется в любом случае, статус лишь отражается на заставке.
-  splashStatus("Открытие локального реестра")
+  // откроется в любом случае, сбой лишь отражается на заставке.
+  splashStage("registry")
+  splashStage("recovery")
   startAnchorService()
     .then(({ confirmed, requeued }) => {
-      splashStatus(
+      splashStage(
+        "renderer",
         confirmed || requeued
           ? `Восстановлено фиксаций: ${confirmed + requeued}`
-          : "Очередь фиксаций проверена"
+          : undefined
       )
     })
     .catch((e) => {
       console.error("anchor service start failed:", e)
-      splashStatus("Реестр недоступен — фиксации останутся в очереди")
+      // Узел недоступен — это не крах: очередь переживёт и дождётся.
+      // Но молчать об этом нельзя, продукт о доверии обязан признавать сбой.
+      splashCall("splashError", "Реестр недоступен — фиксации останутся в очереди")
     })
 
-  win?.once("ready-to-show", () => revealMainWindow(splashShownAt))
+  win?.once("ready-to-show", () => {
+    splashStage("ready")
+    revealMainWindow(splashShownAt)
+  })
 
   // Страховка: если renderer так и не отрисовался, приложение всё равно
   // не должно остаться навсегда под заставкой

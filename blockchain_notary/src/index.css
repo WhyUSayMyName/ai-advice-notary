@@ -32,6 +32,12 @@
   --err-bg: rgba(224, 101, 92, 0.13);
   --blossom: #e294c6;
   --row-hover: rgba(160, 180, 255, 0.045);
+
+  /* Фокус-ринг отдельной ролью: цветом --accent он почти сливался с панелью */
+  --ring: rgba(139, 147, 236, 0.7);
+  --shadow: 0 1px 2px rgba(3, 4, 14, 0.55), 0 14px 38px rgba(3, 4, 14, 0.5);
+  --radius: 9px;
+  --radius-s: 6px;
   /* Ореол портала — рассеянный свет за брендовыми элементами */
   --glow: radial-gradient(
     120% 70% at 50% 0%,
@@ -66,6 +72,8 @@
   --err-bg: rgba(224, 101, 92, 0.13);
   --blossom: #b45b90;
   --row-hover: rgba(30, 35, 82, 0.035);
+  --ring: rgba(79, 90, 203, 0.6);
+  --shadow: 0 1px 2px rgba(24, 28, 64, 0.06), 0 10px 28px rgba(24, 28, 64, 0.07);
   --glow: radial-gradient(
     120% 70% at 50% 0%,
     rgba(120, 200, 230, 0.16) 0%,
@@ -130,6 +138,6 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
