@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld("api", {
   // anchor queue
   listAnchorQueue: () => ipcRenderer.invoke("anchor:list"),
 
+  flushAnchorQueue: () => ipcRenderer.invoke("anchor:flush"),
+
   listAnchorBatches: () => ipcRenderer.invoke("anchor:batches"),
 
   onAnchorUpdated: (callback: (event: unknown) => void) => {

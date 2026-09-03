@@ -31,6 +31,7 @@ export default function App() {
   const [queue, setQueue] = useState<AnchorQueueItem[]>([])
   const [batches, setBatches] = useState<AnchorBatchSummary[]>([])
   const [chainVerdict, setChainVerdict] = useState<ChainVerdict | undefined>()
+  const [batchReadyAt, setBatchReadyAt] = useState<number | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactRecord | null>(null)
@@ -107,7 +108,18 @@ export default function App() {
       return
     }
     setQueue(res.queue ?? [])
+    setBatchReadyAt(res.readyAt ?? null)
   }, [])
+
+  const flushQueue = useCallback(async () => {
+    const res = await window.api.flushAnchorQueue()
+    if (!res.ok) {
+      log(`Ошибка отправки: ${res.error}`)
+      return
+    }
+    log("Пакет отправлен вручную, не дожидаясь окна накопления")
+    await loadQueue()
+  }, [loadQueue])
 
   const loadBatches = useCallback(async () => {
     const res = await window.api.listAnchorBatches()
@@ -139,6 +151,14 @@ export default function App() {
     void loadQueue()
     void loadBatches()
   }, [loadArtifacts, runAudit, inspectChains, loadQueue, loadBatches])
+
+  // Пока пакет придержан, обновляем очередь раз в секунду — иначе
+  // обратный отсчёт до отправки замирает
+  useEffect(() => {
+    if (batchReadyAt === null) return
+    const t = setInterval(() => void loadQueue(), 1000)
+    return () => clearInterval(t)
+  }, [batchReadyAt, loadQueue])
 
   // События anchor-очереди: живой статус фиксаций из main-процесса
   useEffect(() => {
@@ -540,7 +560,7 @@ export default function App() {
           </>
         }
       >
-        <QueueScreen queue={queue} />
+        <QueueScreen queue={queue} readyAt={batchReadyAt} onFlush={flushQueue} />
       </Screen>
     ),
 

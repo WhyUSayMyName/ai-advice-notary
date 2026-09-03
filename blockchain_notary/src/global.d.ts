@@ -249,6 +249,14 @@ type AnchorUpdateEvent = {
       listAnchorQueue: () => Promise<{
         ok: boolean
         queue?: AnchorQueueItem[]
+        /** Момент, когда придержанный пакет уйдёт сам; null — не ждёт */
+        readyAt?: number | null
+        error?: string
+      }>
+
+      flushAnchorQueue: () => Promise<{
+        ok: boolean
+        readyAt?: number | null
         error?: string
       }>
 

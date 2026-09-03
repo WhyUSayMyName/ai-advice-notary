@@ -1,4 +1,4 @@
-import { Card, EmptyState, Pill, short, formatTime } from "../components/ui"
+import { Button, Card, EmptyState, Pill, short, formatTime } from "../components/ui"
 
 const LABEL: Record<AnchorStatus, string> = {
   pending: "В очереди",
@@ -14,10 +14,22 @@ const TONE: Record<AnchorStatus, "ok" | "warn" | "info" | "err"> = {
   failed: "err",
 }
 
-export function QueueScreen({ queue }: { queue: AnchorQueueItem[] }) {
+export function QueueScreen({
+  queue,
+  readyAt,
+  onFlush,
+}: {
+  queue: AnchorQueueItem[]
+  /** Момент отправки придержанного пакета; null — ничего не ждёт */
+  readyAt?: number | null
+  onFlush: () => void
+}) {
   const pending = queue.filter((q) => q.status === "pending" || q.status === "sent")
   const confirmed = queue.filter((q) => q.status === "confirmed")
   const failed = queue.filter((q) => q.status === "failed")
+
+  const secondsLeft =
+    readyAt != null ? Math.max(0, Math.ceil((readyAt - Date.now()) / 1000)) : null
 
   return (
     <>
@@ -38,12 +50,24 @@ export function QueueScreen({ queue }: { queue: AnchorQueueItem[] }) {
             <div className="num mt-0.5 text-[15px] font-semibold text-err">{failed.length}</div>
           </div>
         ) : null}
-        <div className="ml-auto">
+        {secondsLeft !== null ? (
+          <div>
+            <div className="text-[11px] text-muted">Отправка через</div>
+            <div className="num mt-0.5 text-[15px] font-semibold">{secondsLeft} с</div>
+          </div>
+        ) : null}
+
+        <div className="ml-auto flex items-center gap-2.5">
           {pending.length > 1 ? (
             <Pill tone="acc">пакетная фиксация: {pending.length} → 1 транзакция</Pill>
           ) : (
             <Pill tone="acc">воркер активен</Pill>
           )}
+          {pending.length > 0 ? (
+            <Button variant="primary" onClick={onFlush}>
+              Зафиксировать сейчас
+            </Button>
+          ) : null}
         </div>
       </div>
 

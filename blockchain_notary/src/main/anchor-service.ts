@@ -36,6 +36,13 @@ export type AnchorServiceOptions = {
   idleMs?: number
   /** Максимум документов в одном merkle-пакете (по умолчанию 256). */
   maxBatchSize?: number
+  /**
+   * Окно накопления пакета от последнего поступления, мс (по умолчанию 15000).
+   * 0 отключает — каждая запись уходит немедленно.
+   */
+  batchWindowMs?: number
+  /** Потолок ожидания для самой старой записи, мс (по умолчанию 60000). */
+  batchMaxWaitMs?: number
   /** Часы — подменяются в тестах. */
   now?: () => number
 }
@@ -56,10 +63,14 @@ export class AnchorService {
   private readonly backoffMaxMs: number
   private readonly idleMs: number
   private readonly maxBatchSize: number
+  private readonly batchWindowMs: number
+  private readonly batchMaxWaitMs: number
   private readonly now: () => number
 
   private running = false
   private wake: (() => void) | null = null
+  private holdUntil: number | null = null
+  private flushRequested = false
 
   constructor(
     private readonly db: NotaryDatabase,
@@ -73,12 +84,14 @@ export class AnchorService {
     this.backoffMaxMs = options.backoffMaxMs ?? 5 * 60_000
     this.idleMs = options.idleMs ?? 15_000
     this.maxBatchSize = options.maxBatchSize ?? 256
+    this.batchWindowMs = options.batchWindowMs ?? 15_000
+    this.batchMaxWaitMs = options.batchMaxWaitMs ?? 60_000
     this.now = options.now ?? Date.now
   }
 
   /** Ставит хеш в очередь и будит воркер. Мгновенно, без сети. */
   enqueue(hash: string, rpcUrl?: string): AnchorQueueItem {
-    const item = this.db.enqueueAnchor(hash, rpcUrl)
+    const item = this.db.enqueueAnchor(hash, rpcUrl, this.now())
     this.emit({ type: "queued", item })
     this.kick()
     return item
@@ -151,8 +164,19 @@ export class AnchorService {
     const due = this.db.getDueAnchors(this.now(), this.maxBatchSize)
 
     if (due.length === 0) {
+      this.holdUntil = null
       return this.db.getNextAnchorAttemptAt() !== undefined ? "waiting" : "empty"
     }
+
+    // Окно накопления. Без него воркер просыпался на каждое добавление и
+    // якорил запись поодиночке: пакет собирался лишь при случайном совпадении,
+    // и экономия ради которой строился merkle-батчинг не работала.
+    const hold = this.batchHoldUntil(due)
+    if (hold !== null) {
+      this.holdUntil = hold
+      return "waiting"
+    }
+    this.holdUntil = null
 
     // Уже заякоренные (напрямую или через пакет) подтверждаются без отправки
     const remaining: AnchorQueueItem[] = []
@@ -178,6 +202,47 @@ export class AnchorService {
     }
 
     return "processed"
+  }
+
+  /**
+   * До какого момента придержать отправку, чтобы к записи успели подтянуться
+   * соседи. null — ждать больше нечего, можно якорить.
+   *
+   * Правила: окно отсчитывается от последнего поступления, но общее ожидание
+   * ограничено — документ не должен висеть бесконечно из-за потока новых.
+   * Полный пакет и ручной запуск отправляются немедленно.
+   */
+  private batchHoldUntil(due: AnchorQueueItem[]): number | null {
+    if (this.flushRequested) {
+      this.flushRequested = false
+      return null
+    }
+    if (this.batchWindowMs <= 0 || due.length >= this.maxBatchSize) return null
+
+    const now = this.now()
+    const newest = Math.max(...due.map((i) => i.created_at))
+    const oldest = Math.min(...due.map((i) => i.created_at))
+
+    // Повторные попытки не задерживаем: их время уже пришло
+    if (due.some((i) => i.attempts > 0)) return null
+
+    const windowEnds = newest + this.batchWindowMs
+    const deadline = oldest + this.batchMaxWaitMs
+    const until = Math.min(windowEnds, deadline)
+
+    return until > now ? until : null
+  }
+
+  /** Отправить накопленное немедленно, не дожидаясь окна. */
+  flush() {
+    this.flushRequested = true
+    this.holdUntil = null
+    this.kick()
+  }
+
+  /** Момент, когда придержанный пакет будет отправлен (для интерфейса). */
+  get batchReadyAt(): number | null {
+    return this.holdUntil
   }
 
   private async processSingle(item: AnchorQueueItem) {
@@ -300,8 +365,10 @@ export class AnchorService {
 
       let delay = this.idleMs
       if (result === "waiting") {
-        const nextAt = this.db.getNextAnchorAttemptAt()
-        if (nextAt !== undefined) {
+        // Проснуться нужно к ближайшему из двух сроков: конец окна накопления
+        // или время следующей попытки отложенной записи
+        const nextAt = this.holdUntil ?? this.db.getNextAnchorAttemptAt()
+        if (nextAt !== undefined && nextAt !== null) {
           delay = Math.min(Math.max(nextAt - this.now(), 50), this.idleMs)
         }
       }

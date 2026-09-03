@@ -366,7 +366,13 @@ export function createDatabase(dbPath: string) {
    * повторная постановка возвращает существующую, а окончательно
    * проваленная (failed) реактивируется для новой серии попыток.
    */
-  function enqueueAnchor(hash: string, rpcUrl?: string): AnchorQueueItem {
+  /**
+   * @param at момент поступления. Передаётся сервисом, потому что окно
+   *   накопления пакета сравнивает created_at с его собственными часами —
+   *   два источника времени в одном расчёте дают неверный результат.
+   */
+  function enqueueAnchor(hash: string, rpcUrl?: string, at?: number): AnchorQueueItem {
+    const now = at ?? Date.now()
     const existing = getAnchorByHash(hash)
 
     if (existing) {
@@ -374,15 +380,14 @@ export function createDatabase(dbPath: string) {
         db.prepare(`
           UPDATE anchor_queue
           SET status = 'pending', attempts = 0, next_attempt_at = 0,
-              last_error = NULL, updated_at = ?
+              last_error = NULL, created_at = ?, updated_at = ?
           WHERE id = ?
-        `).run(Date.now(), existing.id)
+        `).run(now, now, existing.id)
         return getAnchorByHash(hash)!
       }
       return existing
     }
 
-    const now = Date.now()
     const info = db
       .prepare(`
         INSERT INTO anchor_queue (hash, rpc_url, status, attempts, next_attempt_at, created_at, updated_at)

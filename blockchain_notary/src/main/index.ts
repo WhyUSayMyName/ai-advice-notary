@@ -11,7 +11,13 @@ import {
 } from "./artifacts"
 import { auditArtifacts } from "./audit"
 import { inspectVersionChains } from "./version-chain"
-import { listAnchorBatches, listAnchorQueue, verifyAnchorChain } from "./anchor"
+import {
+  anchorBatchReadyAt,
+  flushAnchorQueue,
+  listAnchorBatches,
+  listAnchorQueue,
+  verifyAnchorChain,
+} from "./anchor"
 
 ipcMain.handle("artifact:register", async (_event, filePath: string, displayName?: string) => {
   try {
@@ -122,9 +128,18 @@ ipcMain.handle("artifact:inspectChains", async () => {
   }
 })
 
+ipcMain.handle("anchor:flush", async () => {
+  try {
+    return { ok: true, ...flushAnchorQueue() }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: msg }
+  }
+})
+
 ipcMain.handle("anchor:list", async () => {
   try {
-    return { ok: true, queue: listAnchorQueue() }
+    return { ok: true, queue: listAnchorQueue(), readyAt: anchorBatchReadyAt() }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return { ok: false, error: msg }

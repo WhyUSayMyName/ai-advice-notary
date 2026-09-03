@@ -48,6 +48,21 @@ export function stopAnchorService() {
   service?.stop()
 }
 
+/**
+ * Отправить накопленное немедленно, не дожидаясь окна.
+ * Возвращает момент, к которому пакет ушёл бы сам (для интерфейса).
+ */
+export function flushAnchorQueue() {
+  const s = getAnchorService()
+  s.flush()
+  return { readyAt: s.batchReadyAt }
+}
+
+/** Когда придержанный пакет уйдёт сам; null — ничего не ждёт. */
+export function anchorBatchReadyAt() {
+  return service?.batchReadyAt ?? null
+}
+
 export function listAnchorQueue() {
   return getDatabase().getAnchorQueue()
 }

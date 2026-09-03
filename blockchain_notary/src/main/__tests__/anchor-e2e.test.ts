@@ -54,7 +54,9 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     const adapter = await makeRealAdapter()
     const db = createDatabase(":memory:")
     const confirmed: string[] = []
-    const service = new AnchorService(db, adapter, (hash) => confirmed.push(hash))
+    const service = new AnchorService(db, adapter, (hash) => confirmed.push(hash), undefined, {
+      batchWindowMs: 0,
+    })
 
     const hash = randomHash()
     service.enqueue(hash)
@@ -92,6 +94,7 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     const confirmed: string[] = []
     const service = new AnchorService(db, crashing, (hash) => confirmed.push(hash), undefined, {
       backoffBaseMs: 60_000, // ретрай не должен успеть сработать сам
+      batchWindowMs: 0,
     })
 
     const hash = randomHash()
@@ -123,7 +126,7 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
 
     const adapter = await makeRealAdapter()
     const db = createDatabase(":memory:")
-    const service = new AnchorService(db, adapter, () => {})
+    const service = new AnchorService(db, adapter, () => {}, undefined, { batchWindowMs: 0 })
 
     const first = [randomHash(), randomHash()]
     const second = [randomHash(), randomHash()]
@@ -163,7 +166,9 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     const adapter = await makeRealAdapter()
     const db = createDatabase(":memory:")
     const confirmed: string[] = []
-    const service = new AnchorService(db, adapter, (hash) => confirmed.push(hash))
+    const service = new AnchorService(db, adapter, (hash) => confirmed.push(hash), undefined, {
+      batchWindowMs: 0,
+    })
 
     const hashes = Array.from({ length: 100 }, () => randomHash())
     for (const h of hashes) service.enqueue(h)

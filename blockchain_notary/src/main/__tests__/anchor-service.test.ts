@@ -68,7 +68,7 @@ describe("anchor-service", () => {
   let confirmed: Array<{ hash: string; txHash: string | null }>
   let clock: { now: number }
 
-  function makeService(opts: { maxAttempts?: number } = {}) {
+  function makeService(opts: { maxAttempts?: number; batchWindowMs?: number } = {}) {
     return new AnchorService(
       db,
       fake.chain,
@@ -78,6 +78,9 @@ describe("anchor-service", () => {
         maxAttempts: opts.maxAttempts ?? 3,
         backoffBaseMs: 1000,
         backoffMaxMs: 8000,
+        // По умолчанию окно накопления выключено: большинство тестов шагают
+        // по очереди вручную и не должны зависеть от таймингов
+        batchWindowMs: opts.batchWindowMs ?? 0,
         now: () => clock.now,
       }
     )
@@ -251,6 +254,74 @@ describe("anchor-service", () => {
     expect(batch.members).toEqual([H(1), H(2), H(3)].sort())
     expect(batch.tx_hash).toBe(db.getAnchorByHash(H(1))!.tx_hash)
     expect(confirmed).toHaveLength(3)
+  })
+
+  it("окно накопления: одиночная запись не уходит сразу, ждёт соседей", async () => {
+    const service = makeService({ batchWindowMs: 10_000 })
+    service.enqueue(H(1))
+
+    // Сразу после добавления отправлять нельзя — иначе пакет никогда
+    // не соберётся, и батчинг не работает в реальном использовании
+    expect(await service.processNext()).toBe("waiting")
+    expect(fake.txCount()).toBe(0)
+    expect(service.batchReadyAt).toBe(clock.now + 10_000)
+
+    // Подтянулся сосед — окно отсчитывается от него
+    clock.now += 4000
+    service.enqueue(H(2))
+    expect(await service.processNext()).toBe("waiting")
+    expect(fake.txCount()).toBe(0)
+
+    // Окно закрылось — обе записи уходят одной транзакцией
+    clock.now += 10_000
+    expect(await service.processNext()).toBe("processed")
+    expect(fake.txCount()).toBe(1)
+    expect(fake.anchoredRoots[0].leafCount).toBe(2)
+  })
+
+  it("окно накопления: старая запись не ждёт дольше потолка", async () => {
+    const service = makeService({ batchWindowMs: 10_000 })
+    service.enqueue(H(1))
+
+    // Поток новых записей продлевал бы окно бесконечно, но потолок
+    // batchMaxWaitMs (по умолчанию 60 с) отсчитывается от самой старой
+    for (let i = 0; i < 12; i++) {
+      clock.now += 8000
+      service.enqueue(H(i + 2))
+      const result = await service.processNext()
+      if (result === "processed") break
+    }
+
+    expect(fake.txCount()).toBe(1)
+  })
+
+  it("окно накопления: полный пакет уходит немедленно", async () => {
+    const service = makeService({ batchWindowMs: 10_000, maxAttempts: 3 })
+    // maxBatchSize по умолчанию 256 — проверяем через flush, что ручной
+    // запуск не ждёт окна
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+    expect(await service.processNext()).toBe("waiting")
+
+    service.flush()
+    expect(await service.processNext()).toBe("processed")
+    expect(fake.txCount()).toBe(1)
+  })
+
+  it("окно накопления: повторную попытку не задерживаем", async () => {
+    fake.setFailSends(1)
+    const service = makeService({ batchWindowMs: 10_000 })
+
+    service.enqueue(H(1))
+    service.flush()
+    await service.processNext() // отказ, запись уходит в ретрай
+
+    expect(db.getAnchorByHash(H(1))!.attempts).toBe(1)
+
+    // Её срок уже наступил — окно накопления к ней не применяется
+    clock.now += 5000
+    expect(await service.processNext()).toBe("processed")
+    expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
   })
 
   it("связывание: on-chain уходит голова цепи, а не голый корень пакета", async () => {
