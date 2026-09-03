@@ -38,6 +38,10 @@ export type AnchorBatch = {
   tx_hash: string | null
   leaf_count: number
   created_at: number
+  /** Голова цепи до этой эпохи; null у пакетов до появления связывания */
+  prev_chain_root: string | null
+  /** Голова цепи после этой эпохи — именно она заякорена on-chain */
+  chain_root: string | null
   /** Файловые хеши, входящие в пакет. */
   members: string[]
 }
@@ -160,7 +164,13 @@ function migrate(db: Database.Database) {
       root TEXT PRIMARY KEY,
       tx_hash TEXT,
       leaf_count INTEGER NOT NULL,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      -- Связывание эпох: prev_chain_root — голова цепи до этого пакета,
+      -- chain_root — голова после него, она же уходит on-chain.
+      -- NULL у пакетов, созданных до появления связывания: они заякорены
+      -- голым корнем и продолжают проверяться прежним способом.
+      prev_chain_root TEXT,
+      chain_root TEXT
     );
 
     CREATE TABLE IF NOT EXISTS anchor_batch_members (
@@ -171,6 +181,11 @@ function migrate(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_batch_members_hash ON anchor_batch_members(hash);
   `)
+
+  // Связывание эпох появилось позже: в существующих базах таблица уже создана,
+  // и CREATE TABLE IF NOT EXISTS колонок не добавит
+  ensureColumn(db, "anchor_batches", "prev_chain_root", "TEXT")
+  ensureColumn(db, "anchor_batches", "chain_root", "TEXT")
 
   db.exec(`
     UPDATE artifacts
@@ -459,19 +474,64 @@ export function createDatabase(dbPath: string) {
     return { ...row, members }
   }
 
-  /** Регистрирует состав пакета до отправки транзакции (нужен для recovery). */
-  const createAnchorBatch = db.transaction((root: string, hashes: string[]) => {
-    db.prepare(`
-      INSERT INTO anchor_batches (root, tx_hash, leaf_count, created_at)
-      VALUES (?, NULL, ?, ?)
-      ON CONFLICT(root) DO NOTHING
-    `).run(root, hashes.length, Date.now())
+  /**
+   * Регистрирует состав пакета до отправки транзакции (нужен для recovery).
+   * link — связка с предыдущей эпохой; отсутствует только у пакетов,
+   * созданных до появления связывания.
+   */
+  const createAnchorBatch = db.transaction(
+    (root: string, hashes: string[], link?: { prevChainRoot: string; chainRoot: string }) => {
+      db.prepare(`
+        INSERT INTO anchor_batches
+          (root, tx_hash, leaf_count, created_at, prev_chain_root, chain_root)
+        VALUES (?, NULL, ?, ?, ?, ?)
+        ON CONFLICT(root) DO NOTHING
+      `).run(
+        root,
+        hashes.length,
+        Date.now(),
+        link?.prevChainRoot ?? null,
+        link?.chainRoot ?? null
+      )
 
-    const insert = db.prepare(`
-      INSERT OR IGNORE INTO anchor_batch_members (root, hash) VALUES (?, ?)
-    `)
-    for (const hash of hashes) insert.run(root, hash)
-  })
+      const insert = db.prepare(`
+        INSERT OR IGNORE INTO anchor_batch_members (root, hash) VALUES (?, ?)
+      `)
+      for (const hash of hashes) insert.run(root, hash)
+    }
+  )
+
+  /**
+   * Голова цепи — chain_root последней связанной эпохи.
+   * undefined, если связанных эпох ещё нет: значит цепь начинается с генезиса.
+   */
+  function getChainHead(): string | undefined {
+    const row = db
+      .prepare(`
+        SELECT chain_root
+        FROM anchor_batches
+        WHERE chain_root IS NOT NULL
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 1
+      `)
+      .get() as { chain_root: string } | undefined
+
+    return row?.chain_root
+  }
+
+  /** Звенья цепи в хронологическом порядке — для проверки непрерывности. */
+  function getChainLinks(): Array<{ prev: string; batchRoot: string; chainRoot: string }> {
+    return (
+      db
+        .prepare(`
+          SELECT prev_chain_root, root, chain_root
+          FROM anchor_batches
+          WHERE chain_root IS NOT NULL
+          ORDER BY created_at ASC, rowid ASC
+        `)
+        .all() as Array<{ prev_chain_root: string; root: string; chain_root: string }>
+    ).map((r) => ({ prev: r.prev_chain_root, batchRoot: r.root, chainRoot: r.chain_root }))
+  }
 
   function setAnchorBatchTx(root: string, txHash: string) {
     db.prepare(`UPDATE anchor_batches SET tx_hash = ? WHERE root = ?`).run(txHash, root)
@@ -494,7 +554,7 @@ export function createDatabase(dbPath: string) {
   function listAnchorBatches(limit = 200): AnchorBatchSummary[] {
     return db
       .prepare(`
-        SELECT root, tx_hash, leaf_count, created_at
+        SELECT root, tx_hash, leaf_count, created_at, prev_chain_root, chain_root
         FROM anchor_batches
         ORDER BY created_at DESC
         LIMIT ?
@@ -545,6 +605,8 @@ export function createDatabase(dbPath: string) {
     getAnchorBatch,
     getAnchorBatchesForHash,
     listAnchorBatches,
+    getChainHead,
+    getChainLinks,
     close: () => db.close(),
   }
 }

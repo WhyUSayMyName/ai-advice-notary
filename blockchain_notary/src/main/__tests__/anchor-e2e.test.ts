@@ -20,7 +20,9 @@ const enabled = Boolean(RPC_URL && NOTARY_ADDRESS && PK)
 
 async function makeRealAdapter(): Promise<ChainAdapter> {
   const { JsonRpcProvider, Wallet, Contract } = await import("ethers")
-  const provider = new JsonRpcProvider(RPC_URL)
+  // cacheTimeout: -1 — как в notary.ts: иначе кэш getTransactionCount
+  // выдаёт один nonce на две подряд идущие транзакции
+  const provider = new JsonRpcProvider(RPC_URL, undefined, { cacheTimeout: -1 })
   const wallet = new Wallet(PK!, provider)
   const abi = [
     "function notarize(bytes32 hash)",
@@ -115,6 +117,47 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     db.close()
   })
 
+  it("связывание: две эпохи подряд, on-chain лежат головы цепи, а не корни", async () => {
+    const { buildMerkleTree } = await import("../merkle-core")
+    const { chainRoot, genesisRoot, verifyChain } = await import("../chain-core")
+
+    const adapter = await makeRealAdapter()
+    const db = createDatabase(":memory:")
+    const service = new AnchorService(db, adapter, () => {})
+
+    const first = [randomHash(), randomHash()]
+    const second = [randomHash(), randomHash()]
+
+    for (const h of first) service.enqueue(h)
+    await service.processNext()
+
+    for (const h of second) service.enqueue(h)
+    await service.processNext()
+
+    const links = db.getChainLinks()
+    expect(links).toHaveLength(2)
+
+    // Цепочка непрерывна и начинается от генезиса
+    const verdict = verifyChain(links)
+    expect(verdict.ok).toBe(true)
+    expect(links[0].prev).toBe(genesisRoot())
+    expect(links[1].prev).toBe(links[0].chainRoot)
+
+    // On-chain лежат именно головы; голые корни пакетов там отсутствуют
+    for (const link of links) {
+      expect(link.chainRoot).toBe(chainRoot(link.prev, link.batchRoot))
+      expect(await adapter.isNotarized(link.chainRoot)).toBe(true)
+      expect(await adapter.isNotarized(link.batchRoot)).toBe(false)
+    }
+
+    // Документы подтверждены через голову своей эпохи
+    const batch = db.getAnchorBatchesForHash(first[0])[0]
+    expect(buildMerkleTree(batch.members).root).toBe(batch.root)
+    expect(db.getAnchorByHash(first[0])!.status).toBe("confirmed")
+
+    db.close()
+  }, 60_000)
+
   it("батч: 100 документов фиксируются одной транзакцией, каждый проверяем по proof", async () => {
     const { verifyMerkleProof, buildMerkleTree } = await import("../merkle-core")
     const adapter = await makeRealAdapter()
@@ -135,7 +178,8 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     // root действительно on-chain, и proof каждого документа сходится к нему
     const batch = db.getAnchorBatchesForHash(hashes[0])[0]
     expect(batch.leaf_count).toBe(100)
-    expect(await adapter.isNotarized(batch.root)).toBe(true)
+    // On-chain лежит голова цепи эпохи, а не голый корень пакета
+    expect(await adapter.isNotarized(batch.chain_root!)).toBe(true)
 
     const tree = buildMerkleTree(batch.members)
     expect(tree.root).toBe(batch.root)

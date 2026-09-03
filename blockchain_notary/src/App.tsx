@@ -30,6 +30,7 @@ export default function App() {
   const [chainReports, setChainReports] = useState<VersionChainReport[]>([])
   const [queue, setQueue] = useState<AnchorQueueItem[]>([])
   const [batches, setBatches] = useState<AnchorBatchSummary[]>([])
+  const [chainVerdict, setChainVerdict] = useState<ChainVerdict | undefined>()
   const [toast, setToast] = useState<string | null>(null)
 
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactRecord | null>(null)
@@ -115,6 +116,11 @@ export default function App() {
       return
     }
     setBatches(res.batches ?? [])
+    setChainVerdict(res.chain)
+
+    if (res.chain && !res.chain.ok) {
+      log(`Цепочка эпох нарушена: ${res.chain.reason}`)
+    }
   }, [])
 
   const loadArtifactHistory = useCallback(async (artifactId: string) => {
@@ -544,7 +550,7 @@ export default function App() {
         subtitle="Ствол реестра: каждая эпоха — пакет документов, закрытый одной транзакцией"
         actions={<Button onClick={loadBatches}>Обновить</Button>}
       >
-        <EpochsScreen batches={batches} onCopied={onHashCopied} />
+        <EpochsScreen batches={batches} chain={chainVerdict} onCopied={onHashCopied} />
       </Screen>
     ),
 

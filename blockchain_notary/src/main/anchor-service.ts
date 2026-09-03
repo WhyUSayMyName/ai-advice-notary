@@ -1,5 +1,6 @@
 import type { AnchorQueueItem, NotaryDatabase } from "./database-core"
 import { buildMerkleTree } from "./merkle-core"
+import { chainRoot, genesisRoot } from "./chain-core"
 
 /**
  * Адаптер взаимодействия с чейном. Выделен в интерфейс, чтобы сервис
@@ -130,7 +131,10 @@ export class AnchorService {
     }
 
     for (const batch of this.db.getAnchorBatchesForHash(item.hash)) {
-      if (await this.chain.isNotarized(batch.root, rpcUrl)) {
+      // Связанные эпохи заякорены головой цепи; у пакетов, созданных до
+      // появления связывания, on-chain лежит голый корень
+      const anchored = batch.chain_root ?? batch.root
+      if (await this.chain.isNotarized(anchored, rpcUrl)) {
         return { txHash: batch.tx_hash }
       }
     }
@@ -199,21 +203,29 @@ export class AnchorService {
     const tree = buildMerkleTree(items.map((i) => i.hash))
     const rpcUrl = items[0].rpc_url ?? undefined
 
-    // Состав пакета фиксируется до отправки: если приложение упадёт
-    // после сабмита транзакции, recovery восстановит связь hash → root
-    this.db.createAnchorBatch(tree.root, items.map((i) => i.hash))
+    // Эпоха связывается с предыдущей: on-chain уходит голова цепи, а не голый
+    // корень пакета. Так изъятие эпохи из середины истории становится видимым.
+    const prevChainRoot = this.db.getChainHead() ?? genesisRoot()
+    const head = chainRoot(prevChainRoot, tree.root)
+
+    // Состав пакета и связка фиксируются до отправки: если приложение упадёт
+    // после сабмита транзакции, recovery восстановит связь hash → root → голова
+    this.db.createAnchorBatch(tree.root, items.map((i) => i.hash), {
+      prevChainRoot,
+      chainRoot: head,
+    })
 
     let txHash: string
     let wait: () => Promise<{ blockNumber: number | null }>
     try {
       const existing = this.db.getAnchorBatch(tree.root)
-      if (existing?.tx_hash && (await this.chain.isNotarized(tree.root, rpcUrl))) {
+      if (existing?.tx_hash && (await this.chain.isNotarized(head, rpcUrl))) {
         // Тот же состав уже заякорен предыдущей попыткой
         this.confirmBatchItems(items, existing.tx_hash)
         return
       }
 
-      const sent = await this.chain.sendAnchorRoot(tree.root, tree.leafCount, rpcUrl)
+      const sent = await this.chain.sendAnchorRoot(head, tree.leafCount, rpcUrl)
       txHash = sent.txHash
       wait = sent.wait
     } catch (e) {

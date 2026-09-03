@@ -3,12 +3,21 @@ import type { ArtifactRecord, AnchorBatch } from "./database-core"
 import { buildMerkleTree } from "./merkle-core"
 
 export type EvidenceBatchProof = {
-  /** Корень merkle-пакета, заякоренный on-chain. */
+  /** Корень merkle-пакета. */
   root: string
   /** Транзакция anchorRoot (если известна). */
   tx: string | null
   /** Хеши-соседи от листа к корню (сортированные пары, префиксы 0x00/0x01, SHA-256). */
   proof: string[]
+  /**
+   * Голова цепи до этой эпохи. Вместе с root даёт заякоренное значение:
+   * chain_root = SHA-256(0x02 ‖ prev_chain_root ‖ root).
+   * Отсутствует у пакетов, созданных до появления связывания — тогда
+   * on-chain лежит сам root.
+   */
+  prev_chain_root?: string
+  /** Голова цепи после эпохи — именно это значение проверяется в реестре. */
+  chain_root?: string
 }
 
 export type EvidenceArtifact = {
@@ -27,7 +36,7 @@ export type EvidenceArtifact = {
 }
 
 export type EvidenceBundle = {
-  format: "notary-evidence/v2"
+  format: "notary-evidence/v3"
   generated_at: string
   chain: {
     chain_id: number | null
@@ -85,6 +94,11 @@ export function buildEvidenceBundle(
           root: batch.root,
           tx: batch.tx_hash,
           proof: buildMerkleTree(batch.members).proofFor(r.hash),
+          // Связка передаётся, только если эпоха связана: у старых пакетов
+          // её нет, и верификатор проверяет сам корень
+          ...(batch.chain_root && batch.prev_chain_root
+            ? { prev_chain_root: batch.prev_chain_root, chain_root: batch.chain_root }
+            : {}),
         }
       }
 
@@ -92,7 +106,7 @@ export function buildEvidenceBundle(
     })
 
   return {
-    format: "notary-evidence/v2",
+    format: "notary-evidence/v3",
     generated_at: new Date().toISOString(),
     chain: {
       chain_id: chain.chainId,
@@ -107,8 +121,11 @@ export function buildEvidenceBundle(
         "Use a JSON-RPC node you control or trust (rpc_url_hint is a hint, not a guarantee).",
         "Run: notary-verify --bundle <this file> --dir <directory with the documents> --rpc <url>",
         "Entries with a 'batch' block are anchored via a Merkle root: the verifier recomputes " +
-          "the file hash, folds the proof to the root and checks the root on-chain.",
-        "TAMPERED / MISSING_FILE / NOT_ON_CHAIN / BAD_PROOF indicate integrity violations.",
+          "the file hash and folds the proof to the root.",
+        "When the batch carries prev_chain_root, epochs are linked: the anchored value is " +
+          "chain_root = SHA-256(0x02 || prev_chain_root || root), and that is what is checked " +
+          "on-chain. Without it the root itself is the anchored value (pre-linking batches).",
+        "TAMPERED / MISSING_FILE / NOT_ON_CHAIN / BAD_PROOF / BAD_LINK indicate violations.",
       ],
     },
   }

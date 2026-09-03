@@ -22,14 +22,14 @@ function rec(partial: Partial<ArtifactRecord>): ArtifactRecord {
 }
 
 describe("evidence-core", () => {
-  it("собирает бандл формата notary-evidence/v1 с данными чейна", () => {
+  it("собирает бандл актуального формата с данными чейна", () => {
     const bundle = buildEvidenceBundle([rec({ notarized: 1, blockchain_tx: "0xTX" })], {
       contract: "0xCONTRACT",
       chainId: 31337,
       rpcUrl: "http://127.0.0.1:8545",
     })
 
-    expect(bundle.format).toBe("notary-evidence/v2")
+    expect(bundle.format).toBe("notary-evidence/v3")
     expect(bundle.chain).toEqual({
       chain_id: 31337,
       contract: "0xCONTRACT",
@@ -77,7 +77,15 @@ describe("evidence-core", () => {
       {
         batchFor: (hash) =>
           hash === H(2)
-            ? { root, tx_hash: "0xBATCH_TX", leaf_count: 3, created_at: 1, members }
+            ? {
+                root,
+                tx_hash: "0xBATCH_TX",
+                leaf_count: 3,
+                created_at: 1,
+                prev_chain_root: null,
+                chain_root: null,
+                members,
+              }
             : undefined,
       }
     )
@@ -87,6 +95,43 @@ describe("evidence-core", () => {
     expect(entry.batch!.root).toBe(root)
     expect(entry.batch!.tx).toBe("0xBATCH_TX")
     expect(verifyMerkleProof(H(2), entry.batch!.proof, root)).toBe(true)
+
+    // Пакет без связки: полей цепи нет, аудитор проверит сам корень
+    expect(entry.batch!.chain_root).toBeUndefined()
+    expect(entry.batch!.prev_chain_root).toBeUndefined()
+  })
+
+  it("связанная эпоха: бандл несёт связку, аудитор пересчитает голову", async () => {
+    const { buildMerkleTree } = await import("../merkle-core")
+    const { chainRoot, genesisRoot } = await import("../chain-core")
+
+    const members = [H(1), H(2)]
+    const root = buildMerkleTree(members).root
+    const prev = genesisRoot()
+    const head = chainRoot(prev, root)
+
+    const bundle = buildEvidenceBundle(
+      [rec({ hash: H(1), notarized: 1, blockchain_tx: "0xTX" })],
+      { contract: "0xC", chainId: 31337 },
+      {
+        batchFor: () => ({
+          root,
+          tx_hash: "0xTX",
+          leaf_count: 2,
+          created_at: 1,
+          prev_chain_root: prev,
+          chain_root: head,
+          members,
+        }),
+      }
+    )
+
+    const batch = bundle.artifacts[0].batch!
+    expect(batch.prev_chain_root).toBe(prev)
+    expect(batch.chain_root).toBe(head)
+
+    // Именно этот пересчёт делает верификатор: связка обязана сходиться
+    expect(chainRoot(batch.prev_chain_root!, batch.root)).toBe(batch.chain_root)
   })
 
   it("без batchFor batch-блок отсутствует", () => {

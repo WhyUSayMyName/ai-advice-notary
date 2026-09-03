@@ -139,7 +139,10 @@ export async function resolveAnchoredRecord(hash: string, rpcUrl?: string) {
   }
 
   for (const batch of getDatabase().getAnchorBatchesForHash(hash)) {
-    const viaRoot = await notaryGetRecord(batch.root, rpcUrl)
+    // Связанные эпохи заякорены головой цепи; у пакетов, созданных до
+    // появления связывания, on-chain лежит голый корень
+    const anchored = batch.chain_root ?? batch.root
+    const viaRoot = await notaryGetRecord(anchored, rpcUrl)
     if (viaRoot.exists) {
       return { ...viaRoot, via: "batch" as const, root: batch.root }
     }

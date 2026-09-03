@@ -1,6 +1,7 @@
 import { getDatabase, markArtifactNotarized } from "./database"
 import { notaryIsNotarized, notarySendAnchorRoot, notarySendNotarize } from "./notary"
 import { AnchorService, type AnchorEvent } from "./anchor-service"
+import { verifyChain } from "./chain-core"
 
 let service: AnchorService | null = null
 const listeners = new Set<(event: AnchorEvent) => void>()
@@ -54,4 +55,13 @@ export function listAnchorQueue() {
 /** Пакеты фиксации — «эпохи» ствола: каждая закрыта одной транзакцией. */
 export function listAnchorBatches() {
   return getDatabase().listAnchorBatches()
+}
+
+/**
+ * Проверяет непрерывность цепочки эпох по локальным данным.
+ * Это самопроверка оператора: аудитор получает тот же вердикт независимо,
+ * пересчитывая связки из пакета доказательств.
+ */
+export function verifyAnchorChain() {
+  return verifyChain(getDatabase().getChainLinks())
 }

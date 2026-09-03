@@ -1,20 +1,20 @@
 import { Card, EmptyState, Hash, Pill, SectionLabel, formatTime } from "../components/ui"
 
 /**
- * Кольца эпох — четвёртый ярус метафоры: ствол как реестр фиксаций.
- * Каждый merkle-пакет закрыт одной транзакцией и образует кольцо.
+ * Кольца эпох — четвёртый ярус метафоры: ствол как связанный реестр фиксаций.
+ * Каждая эпоха коммитится к предыдущей: Cₙ = SHA-256(0x02 ‖ Cₙ₋₁ ‖ rootₙ),
+ * и on-chain уходит голова Cₙ. Изъять кольцо из середины нельзя незаметно.
  *
- * ВАЖНО о честности: связывание эпох (Cₙ = H(Cₙ₋₁ ‖ rootₙ)) описано в
- * спецификации, но В КОДЕ НЕ РЕАЛИЗОВАНО. Поэтому экран показывает только
- * то, что есть на самом деле — состоявшиеся пакеты, — а связь помечена как
- * запланированная. Рисовать несуществующую цепочку в продукте о доказуемости
- * было бы ровно тем подлогом, который система призвана обнаруживать.
+ * Вердикт непрерывности приходит из main-процесса, где считается тем же
+ * каноном, которым пользуется независимый верификатор аудитора.
  */
 export function EpochsScreen({
   batches,
+  chain,
   onCopied,
 }: {
   batches: AnchorBatchSummary[]
+  chain?: ChainVerdict
   onCopied: (v: string) => void
 }) {
   if (batches.length === 0) {
@@ -85,19 +85,38 @@ export function EpochsScreen({
               ) : null}
             </dd>
 
-            <dt className="text-muted">Связывание эпох</dt>
+            <dt className="text-muted">Непрерывность</dt>
             <dd>
-              <Pill tone="mut">запланировано</Pill>
+              {chain?.ok ? (
+                <Pill tone="ok">цепочка цела · {chain.length} звеньев</Pill>
+              ) : chain ? (
+                <Pill tone="err">разрыв на звене {chain.brokenAt + 1}</Pill>
+              ) : (
+                <Pill tone="mut">не проверялась</Pill>
+              )}
             </dd>
+
+            {chain?.ok ? (
+              <>
+                <dt className="text-muted">Голова цепи</dt>
+                <dd>
+                  <Hash value={chain.head} onCopied={onCopied} />
+                </dd>
+              </>
+            ) : null}
           </dl>
 
-          <p className="mt-3 max-w-[68ch] text-[12px] text-muted">
-            Сейчас каждая эпоха самостоятельна: доказуема принадлежность документа пакету,
-            но не непрерывность истории. Связывание{" "}
-            <span className="mono text-faint">Cₙ = H(Cₙ₋₁ ‖ rootₙ)</span> закроет и это —
-            изъять эпоху из середины станет невозможно незаметно. Спецификация готова,
-            реализация впереди.
-          </p>
+          {chain && !chain.ok ? (
+            <p className="mt-3 max-w-[68ch] text-[12px] text-err">{chain.reason}</p>
+          ) : (
+            <p className="mt-3 max-w-[68ch] text-[12px] text-muted">
+              Каждая эпоха коммитится к предыдущей:{" "}
+              <span className="mono text-faint">Cₙ = H(Cₙ₋₁ ‖ rootₙ)</span>. On-chain уходит
+              голова цепи, поэтому изъять эпоху из середины истории незаметно нельзя —
+              разрыв обнаружится при проверке. Опубликуйте голову независимой стороне,
+              и она зафиксирует всю историю до этого момента.
+            </p>
+          )}
         </Card>
       </div>
 
@@ -120,10 +139,19 @@ export function EpochsScreen({
                   <span className="text-[12.5px] text-muted">корень</span>
                   <Hash value={b.root} onCopied={onCopied} />
                   {i === 0 ? <Pill tone="ok">последняя</Pill> : null}
+                  {b.chain_root ? null : <Pill tone="mut">без связки</Pill>}
                 </div>
                 <div className="num mt-0.5 text-[11.5px] text-faint">
                   {b.leaf_count} документов · {formatTime(b.created_at)}
                 </div>
+                {b.chain_root ? (
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-faint">
+                    <span>звено</span>
+                    <Hash value={b.prev_chain_root} onCopied={onCopied} />
+                    <span aria-hidden="true">→</span>
+                    <Hash value={b.chain_root} onCopied={onCopied} />
+                  </div>
+                ) : null}
               </div>
 
               <div className="shrink-0">

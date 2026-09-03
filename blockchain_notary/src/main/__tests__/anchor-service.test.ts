@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { createDatabase, type NotaryDatabase } from "../database-core"
 import { AnchorService, type AnchorEvent, type ChainAdapter } from "../anchor-service"
+import { buildMerkleTree } from "../merkle-core"
+import { chainRoot, genesisRoot, verifyChain } from "../chain-core"
 
 const H = (n: number) => "0x" + String(n).padStart(64, "0")
 
@@ -249,6 +251,83 @@ describe("anchor-service", () => {
     expect(batch.members).toEqual([H(1), H(2), H(3)].sort())
     expect(batch.tx_hash).toBe(db.getAnchorByHash(H(1))!.tx_hash)
     expect(confirmed).toHaveLength(3)
+  })
+
+  it("связывание: on-chain уходит голова цепи, а не голый корень пакета", async () => {
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+
+    await service.processNext()
+
+    const batch = db.getAnchorBatchesForHash(H(1))[0]
+    const tree = buildMerkleTree([H(1), H(2)])
+
+    // Первая эпоха ссылается на генезис
+    expect(batch.prev_chain_root).toBe(genesisRoot())
+    expect(batch.chain_root).toBe(chainRoot(genesisRoot(), tree.root))
+
+    // Заякорена именно голова, корень пакета on-chain отсутствует
+    expect(fake.anchoredRoots[0].root).toBe(batch.chain_root)
+    expect(fake.onChain.has(batch.chain_root!)).toBe(true)
+    expect(fake.onChain.has(tree.root)).toBe(false)
+  })
+
+  it("связывание: вторая эпоха ссылается на первую, цепочка непрерывна", async () => {
+    const service = makeService()
+
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+    await service.processNext()
+
+    service.enqueue(H(3))
+    service.enqueue(H(4))
+    await service.processNext()
+
+    const links = db.getChainLinks()
+    expect(links).toHaveLength(2)
+    expect(links[1].prev).toBe(links[0].chainRoot)
+
+    const verdict = verifyChain(links)
+    expect(verdict.ok).toBe(true)
+    if (verdict.ok) expect(verdict.head).toBe(db.getChainHead())
+  })
+
+  it("связывание: изъятие эпохи из середины ломает проверку непрерывности", async () => {
+    const service = makeService()
+
+    for (const pair of [[H(1), H(2)], [H(3), H(4)], [H(5), H(6)]]) {
+      for (const h of pair) service.enqueue(h)
+      await service.processNext()
+    }
+
+    const links = db.getChainLinks()
+    expect(verifyChain(links).ok).toBe(true)
+
+    // Оператор предъявляет историю без второй эпохи
+    const withHole = [links[0], links[2]]
+    const verdict = verifyChain(withHole)
+
+    expect(verdict.ok).toBe(false)
+    if (!verdict.ok) expect(verdict.reason).toContain("изъята")
+  })
+
+  it("совместимость: пакет без связывания подтверждается по голому корню", async () => {
+    const service = makeService()
+    const tree = buildMerkleTree([H(1), H(2)])
+
+    // Пакет, созданный до появления связывания: chain_root отсутствует
+    db.createAnchorBatch(tree.root, [H(1), H(2)])
+    db.setAnchorBatchTx(tree.root, "0xLEGACY")
+    fake.onChain.add(tree.root)
+
+    service.enqueue(H(1))
+    await service.processNext()
+
+    // Найден по голому корню, повторная отправка не потребовалась
+    expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
+    expect(db.getAnchorByHash(H(1))!.tx_hash).toBe("0xLEGACY")
+    expect(fake.txCount()).toBe(0)
   })
 
   it("батч: отказ до отправки откатывает пакет и переносит все записи", async () => {

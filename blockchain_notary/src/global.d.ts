@@ -79,7 +79,16 @@ type AnchorBatchSummary = {
   tx_hash: string | null
   leaf_count: number
   created_at: number
+  /** Голова цепи до эпохи; null у пакетов, созданных до появления связывания */
+  prev_chain_root: string | null
+  /** Голова цепи после эпохи — заякоренное on-chain значение */
+  chain_root: string | null
 }
+
+/** Вердикт проверки непрерывности цепочки эпох */
+type ChainVerdict =
+  | { ok: true; head: string; length: number }
+  | { ok: false; reason: string; brokenAt: number }
 
 type AnchorUpdateEvent = {
   type: "queued" | "sent" | "confirmed" | "retry" | "failed" | "recovered"
@@ -246,6 +255,7 @@ type AnchorUpdateEvent = {
       listAnchorBatches: () => Promise<{
         ok: boolean
         batches?: AnchorBatchSummary[]
+        chain?: ChainVerdict
         error?: string
       }>
 

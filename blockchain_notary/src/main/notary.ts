@@ -39,7 +39,11 @@ function handlesFor(rpcUrl?: string): Handles {
 
   active?.provider.destroy()
 
-  const provider = new JsonRpcProvider(url)
+  // cacheTimeout: -1 отключает кэш ответов узла. По умолчанию ethers держит
+  // их около 250 мс, включая getTransactionCount — и две транзакции подряд
+  // получают один и тот же nonce. На локальном узле с мгновенным майнингом
+  // это воспроизводится всегда: вторая эпоха падает с «nonce too low».
+  const provider = new JsonRpcProvider(url, undefined, { cacheTimeout: -1 })
   active = { key, provider, read: new Contract(address, NOTARY_ABI, provider) }
   return active
 }

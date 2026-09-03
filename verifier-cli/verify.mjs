@@ -49,6 +49,7 @@ Verdicts:
   NOT_FOUND        (file mode) file hash is NOT in the registry
   TAMPERED         file content differs from the hash recorded in the bundle
   BAD_PROOF        batched entry: Merkle proof does not fold to the claimed root
+  BAD_LINK         linked epoch: chain head does not follow from prev_chain_root and root
   MISSING_FILE     bundle references a file that is not in --dir
   NOT_ON_CHAIN     hash matches the bundle but was never anchored on-chain
   LOCAL_ONLY       bundle marks this entry as not notarized (informational)
@@ -78,6 +79,25 @@ function foldMerkleProof(fileHashHex, proof) {
     acc = createHash("sha256").update(Buffer.concat([Buffer.from([0x01]), lo, hi])).digest()
   }
   return "0x" + acc.toString("hex")
+}
+
+/*
+ * Chain canon (linked epochs):
+ *   chain_root = SHA-256(0x02 || prev_chain_root || batch_root)
+ * A third domain prefix keeps a chain link distinct from a tree node. Unlike
+ * Merkle nodes the operands are NOT sorted: order is the direction of time.
+ */
+function chainRoot(prevChainRootHex, batchRootHex) {
+  const digest = createHash("sha256")
+    .update(
+      Buffer.concat([
+        Buffer.from([0x02]),
+        hexToBuf(prevChainRootHex),
+        hexToBuf(batchRootHex),
+      ])
+    )
+    .digest()
+  return "0x" + digest.toString("hex")
 }
 
 function makeGetRecord(rpcUrl, contractAddress) {
@@ -122,7 +142,9 @@ async function verifyFiles(files, getRecord) {
  * moved on), so only their on-chain anchoring is verified.
  */
 async function verifyBundle(bundle, dir, getRecord) {
-  if (!["notary-evidence/v1", "notary-evidence/v2"].includes(bundle.format)) {
+  if (
+    !["notary-evidence/v1", "notary-evidence/v2", "notary-evidence/v3"].includes(bundle.format)
+  ) {
     throw new Error(`Unsupported bundle format: ${bundle.format ?? "(missing)"}`)
   }
   const artifacts = bundle.artifacts ?? []
@@ -149,8 +171,9 @@ async function verifyBundle(bundle, dir, getRecord) {
       continue
     }
 
-    // Batched entry: the anchor lives at the Merkle root; the proof must
-    // fold from the recorded hash exactly to that root.
+    // Batched entry: the proof must fold from the recorded hash exactly to the
+    // batch root. When epochs are linked, the value actually anchored on-chain
+    // is one step further — the chain head that commits to the previous epoch.
     let anchorTarget = a.hash
     if (a.batch) {
       const computedRoot = foldMerkleProof(a.hash, a.batch.proof ?? [])
@@ -159,6 +182,19 @@ async function verifyBundle(bundle, dir, getRecord) {
         continue
       }
       anchorTarget = a.batch.root
+
+      if (a.batch.prev_chain_root) {
+        const computedHead = chainRoot(a.batch.prev_chain_root, a.batch.root)
+        const claimedHead = String(a.batch.chain_root ?? "").toLowerCase()
+
+        // The bundle states a head; if it does not follow from the link, the
+        // epoch was rewritten or moved in the history
+        if (computedHead !== claimedHead) {
+          results.push({ ...base, status: "BAD_LINK", computed_chain_root: computedHead })
+          continue
+        }
+        anchorTarget = computedHead
+      }
     }
 
     const record = await getRecord(anchorTarget)
@@ -204,6 +240,7 @@ const PROBLEM_STATUSES = new Set([
   "NOT_ON_CHAIN",
   "NOT_FOUND",
   "BAD_PROOF",
+  "BAD_LINK",
 ])
 
 function printHuman(results) {

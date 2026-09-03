@@ -72,19 +72,23 @@ system for provable integrity of digital documents and AI-generated advice.
   qualified e-signatures (authorship) with proof of existence in time that
   even the EDMS administrator cannot rewrite.
 
+- **Phase 9 — Linked anchor ledger (gap-evident history).**
+  Epochs are chained in the Certificate Transparency style: each batch commits to
+  the previous chain head, `Cₙ = SHA-256(0x02 ‖ Cₙ₋₁ ‖ rootₙ)`, and `Cₙ` is what
+  goes on-chain through the existing `anchorRoot` — no contract change, it is just
+  another `bytes32`. Hidden, truncated or reordered epochs become detectable, which
+  closes the "destruction / concealment" threat at the sequence level rather than
+  per document. Bundle format `notary-evidence/v3` carries the link so the auditor
+  recomputes the head independently; the CLI verifier reports `BAD_LINK`. Batches
+  created before linking keep verifying against the bare root. Verified by unit
+  tests (including epoch removal, reordering and truncation) and a live e2e against
+  a real node. Limits, unchanged from the spec: linking does not force completeness
+  (never-anchored data stays invisible — that is an organizational control), the
+  genesis and published head must be trusted out of band, and non-equivocation
+  holds only relative to a committed anchoring identity.
+
 ## Research track
 
-- **Linked anchor ledger (gap-evident history).** Per-organization hash chain of
-  anchors in the Certificate Transparency style: each batch anchor commits to the
-  previous chain head, `Cₙ = SHA256(0x02 ‖ Cₙ₋₁ ‖ batchRootₙ)`, anchored via the
-  existing `anchorRoot` (no contract change — the chained root is just a `bytes32`).
-  Publishing the head periodically to the regulator cryptographically commits the
-  entire anchoring history: hidden, truncated or reordered epochs become detectable
-  (closes the "destruction / concealment" threat at the sequence level, beyond the
-  per-document level). Limits: does not force completeness (never-anchored data
-  stays invisible — organizational control), genesis/head trust, and equivocation
-  only relative to a committed anchoring identity. Bundle format `notary-evidence/v3`,
-  backward compatible. Spec in the research docs.
 - Canonicalization of structured artifacts (JSON, CSV) and **LLM dialogs** —
   provable fixation of AI-generated advice (salted hash format prototyped earlier
   in git history).
