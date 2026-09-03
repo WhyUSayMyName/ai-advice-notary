@@ -1,6 +1,6 @@
 import "dotenv/config"
-import { JsonRpcProvider } from "ethers"
 import { getArtifacts, getDatabase } from "./database"
+import { notaryChainId } from "./notary"
 import { buildEvidenceBundle, type EvidenceBundle } from "./evidence-core"
 
 export async function exportEvidenceBundle(rpcUrl?: string): Promise<EvidenceBundle> {
@@ -10,13 +10,11 @@ export async function exportEvidenceBundle(rpcUrl?: string): Promise<EvidenceBun
   }
 
   let chainId: number | null = null
-  if (rpcUrl) {
-    try {
-      const net = await new JsonRpcProvider(rpcUrl).getNetwork()
-      chainId = Number(net.chainId)
-    } catch {
-      // chainId — вспомогательная информация; недоступность узла не блокирует экспорт
-    }
+  try {
+    chainId = await notaryChainId(rpcUrl)
+  } catch {
+    // chainId — вспомогательная информация; недоступность узла не блокирует
+    // экспорт: хеши и пруфы в бандле от сети не зависят
   }
 
   return buildEvidenceBundle(

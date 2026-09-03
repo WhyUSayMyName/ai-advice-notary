@@ -1,39 +1,85 @@
-import "dotenv/config";
-import { JsonRpcProvider, Wallet, Contract } from "ethers";
+import "dotenv/config"
+import { JsonRpcProvider, Wallet, Contract } from "ethers"
 
 // Единый источник ABI: экспортируется из hardhat-артефакта скриптом scripts/deploy-notary.ts
-import NOTARY_ABI from "./abi/Notary.json";
+import NOTARY_ABI from "./abi/Notary.json"
 
 function mustEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
+  const v = process.env[name]
+  if (!v) throw new Error(`Missing env: ${name}`)
+  return v
 }
 
-function providerFor(rpcUrl?: string) {
-  return new JsonRpcProvider(rpcUrl ?? mustEnv("RPC_URL"));
+type Handles = {
+  key: string
+  provider: JsonRpcProvider
+  /** Только чтение — приватный ключ не нужен и не запрашивается */
+  read: Contract
+  /** Отправка транзакций; создаётся лениво, чтобы читать можно было без ключа */
+  write?: Contract
 }
 
-function contractFor(rpcUrl?: string) {
-  const provider = providerFor(rpcUrl);
-  const signer = new Wallet(mustEnv("NOTARY_PK"), provider);
-  return new Contract(mustEnv("NOTARY_ADDRESS"), NOTARY_ABI, signer);
+/**
+ * Одно активное подключение на приложение.
+ *
+ * Раньше провайдер создавался на КАЖДЫЙ вызов. Провайдер держит соединение
+ * и собственный цикл переподключения, а брошенный продолжает стучаться в узел
+ * вечно: прогон аудита по 14 документам оставлял за собой 14 таких «призраков»,
+ * и лог заполнялся их попытками. Здесь живёт ровно одно подключение, а при
+ * смене адреса или контракта предыдущее закрывается явно.
+ */
+let active: Handles | null = null
+
+function handlesFor(rpcUrl?: string): Handles {
+  const url = rpcUrl ?? mustEnv("RPC_URL")
+  const address = mustEnv("NOTARY_ADDRESS")
+  const key = `${url}|${address}`
+
+  if (active?.key === key) return active
+
+  active?.provider.destroy()
+
+  const provider = new JsonRpcProvider(url)
+  active = { key, provider, read: new Contract(address, NOTARY_ABI, provider) }
+  return active
+}
+
+function writeContract(rpcUrl?: string): Contract {
+  const h = handlesFor(rpcUrl)
+  if (!h.write) {
+    h.write = new Contract(
+      mustEnv("NOTARY_ADDRESS"),
+      NOTARY_ABI,
+      new Wallet(mustEnv("NOTARY_PK"), h.provider)
+    )
+  }
+  return h.write
+}
+
+/** Закрывает активное подключение — вызывается при завершении приложения. */
+export function disposeChain() {
+  active?.provider.destroy()
+  active = null
+}
+
+/** chainId активного подключения — для пакета доказательств и сертификата. */
+export async function notaryChainId(rpcUrl?: string): Promise<number> {
+  const net = await handlesFor(rpcUrl).provider.getNetwork()
+  return Number(net.chainId)
 }
 
 export async function notaryIsNotarized(hashHex: string, rpcUrl?: string) {
-  const c = contractFor(rpcUrl);
-  const notarized: boolean = await c.isNotarized(hashHex);
-  return { notarized };
+  const notarized: boolean = await handlesFor(rpcUrl).read.isNotarized(hashHex)
+  return { notarized }
 }
 
 export async function notaryGetRecord(hashHex: string, rpcUrl?: string) {
-  const c = contractFor(rpcUrl);
-  const [author, timestamp, exists] = await c.getRecord(hashHex);
+  const [author, timestamp, exists] = await handlesFor(rpcUrl).read.getRecord(hashHex)
   return {
     author: String(author),
     timestamp: Number(timestamp),
     exists: Boolean(exists),
-  };
+  }
 }
 
 /**
@@ -42,8 +88,7 @@ export async function notaryGetRecord(hashHex: string, rpcUrl?: string) {
  * до того, как транзакция попадёт в блок.
  */
 export async function notarySendNotarize(hashHex: string, rpcUrl?: string) {
-  const c = contractFor(rpcUrl)
-  const tx = await c.notarize(hashHex)
+  const tx = await writeContract(rpcUrl).notarize(hashHex)
 
   return {
     txHash: tx.hash as string,
@@ -60,8 +105,7 @@ export async function notarySendAnchorRoot(
   leafCount: number,
   rpcUrl?: string
 ) {
-  const c = contractFor(rpcUrl)
-  const tx = await c.anchorRoot(rootHex, leafCount)
+  const tx = await writeContract(rpcUrl).anchorRoot(rootHex, leafCount)
 
   return {
     txHash: tx.hash as string,
@@ -69,21 +113,5 @@ export async function notarySendAnchorRoot(
       const receipt = await tx.wait()
       return { blockNumber: (receipt?.blockNumber ?? null) as number | null }
     },
-  }
-}
-
-export async function notaryNotarize(hashHex: string, rpcUrl?: string) {
-  try {
-    const c = contractFor(rpcUrl);
-    const tx = await c.notarize(hashHex);
-    const receipt = await tx.wait();
-
-    return {
-      txHash: tx.hash,
-      blockNumber: receipt?.blockNumber ?? null,
-    };
-  } catch (error) {
-    console.error("notaryNotarize failed:", error);
-    throw error;
   }
 }

@@ -3,19 +3,19 @@ import { app, BrowserWindow, ipcMain, dialog } from "electron"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
-import { connectRpc } from "../src/main/blockchain"
+import { connectRpc, disposeProbe } from "../src/main/blockchain"
 import { sha256FileHex } from "../src/main/filehash"
 import {
   notaryIsNotarized,
   notaryGetRecord,
-  notaryNotarize,
+  notaryChainId,
+  disposeChain,
 } from "../src/main/notary"
 import { generateCertificatePdf } from "../src/main/certificate"
 import { exportEvidenceBundle } from "../src/main/evidence"
-import { onAnchorEvent, startAnchorService } from "../src/main/anchor"
+import { onAnchorEvent, startAnchorService, stopAnchorService } from "../src/main/anchor"
 
 import "dotenv/config"
-import { JsonRpcProvider } from "ethers"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, "..")
@@ -83,14 +83,6 @@ ipcMain.handle("notary:getRecord", async (_e, hashHex: string, rpcUrl?: string) 
   }
 })
 
-ipcMain.handle("notary:notarize", async (_e, hashHex: string, rpcUrl?: string) => {
-  try {
-    return { ok: true, ...(await notaryNotarize(hashHex, rpcUrl)) }
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) }
-  }
-})
-
 ipcMain.handle(
   "cert:savePdf",
   async (
@@ -108,9 +100,7 @@ ipcMain.handle(
       const notaryAddress = process.env.NOTARY_ADDRESS
       if (!notaryAddress) return { ok: false, error: "Missing env: NOTARY_ADDRESS" }
 
-      const provider = new JsonRpcProvider(payload.rpcUrl)
-      const net = await provider.getNetwork()
-      const chainId = Number(net.chainId)
+      const chainId = await notaryChainId(payload.rpcUrl)
 
       const defaultName = `certificate_${path.basename(payload.filePath)}.pdf`
 
@@ -314,4 +304,13 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()
+})
+
+// Аккуратное завершение: воркер останавливается, соединения с узлом
+// закрываются. Иначе провайдеры продолжают переподключаться, пока
+// процесс окончательно не умрёт.
+app.on("before-quit", () => {
+  stopAnchorService()
+  disposeChain()
+  disposeProbe()
 })

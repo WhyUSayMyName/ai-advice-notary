@@ -38,6 +38,15 @@ export async function startAnchorService() {
   return recovered
 }
 
+/**
+ * Останавливает фоновый воркер при завершении приложения.
+ * Незавершённые записи остаются в очереди: recovery при следующем
+ * запуске сверит их с чейном и дожмёт.
+ */
+export function stopAnchorService() {
+  service?.stop()
+}
+
 export function listAnchorQueue() {
   return getDatabase().getAnchorQueue()
 }

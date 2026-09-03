@@ -237,16 +237,6 @@ type AnchorUpdateEvent = {
         error?: string
       }>
 
-      notaryNotarize: (
-        hashHex: string,
-        rpcUrl?: string
-      ) => Promise<{
-        ok: boolean
-        txHash?: string
-        blockNumber?: number
-        error?: string
-      }>
-
       listAnchorQueue: () => Promise<{
         ok: boolean
         queue?: AnchorQueueItem[]

@@ -36,13 +36,14 @@ const dbPath = resolveSharedDbPath()
 const db = createDatabase(dbPath)
 const artifactsDir = process.env.NOTARY_ARTIFACTS_DIR ?? defaultArtifactsDir(dbPath)
 
-const chainConfigured = Boolean(
-  process.env.RPC_URL && process.env.NOTARY_ADDRESS && process.env.NOTARY_PK
-)
+// Чтение реестра ключа не требует — проверить хеш может кто угодно.
+// Ключ нужен только чтобы отправлять транзакции.
+const canRead = Boolean(process.env.RPC_URL && process.env.NOTARY_ADDRESS)
+const canWrite = canRead && Boolean(process.env.NOTARY_PK)
 
 let deps: McpDeps
 
-if (chainConfigured) {
+if (canWrite) {
   const service = new AnchorService(
     db,
     {
@@ -67,7 +68,11 @@ if (chainConfigured) {
   log("чейн сконфигурирован — anchor-воркер запущен")
 } else {
   deps = { db, enqueue: (hash) => db.enqueueAnchor(hash), artifactsDir }
-  log("RPC_URL/NOTARY_ADDRESS/NOTARY_PK не заданы — режим enqueue-only")
+  log(
+    canRead
+      ? "NOTARY_PK не задан — фиксации копятся в очереди, проверка хешей доступна"
+      : "RPC_URL/NOTARY_ADDRESS не заданы — режим enqueue-only"
+  )
 }
 
 log(`база: ${dbPath}`)
@@ -127,15 +132,15 @@ server.tool(
 
 server.tool(
   "check_hash",
-  "Проверить, заякорен ли хеш on-chain (одиночная фиксация). Требует настроенного RPC.",
+  "Проверить, заякорен ли хеш on-chain (одиночная фиксация). Достаточно RPC_URL и NOTARY_ADDRESS — приватный ключ для чтения не нужен.",
   {
     hash: z.string().regex(/^0x[0-9a-f]{64}$/).describe("SHA-256 хеш артефакта"),
   },
   async ({ hash }) => {
-    if (!chainConfigured) {
+    if (!canRead) {
       return {
         content: [
-          { type: "text", text: "Чейн не сконфигурирован (RPC_URL/NOTARY_ADDRESS/NOTARY_PK)" },
+          { type: "text", text: "Чейн не сконфигурирован (нужны RPC_URL и NOTARY_ADDRESS)" },
         ],
         isError: true,
       }
