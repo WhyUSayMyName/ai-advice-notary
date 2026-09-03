@@ -13,7 +13,12 @@ import {
 } from "../src/main/notary"
 import { generateCertificatePdf } from "../src/main/certificate"
 import { exportEvidenceBundle } from "../src/main/evidence"
-import { onAnchorEvent, startAnchorService, stopAnchorService } from "../src/main/anchor"
+import {
+  anchorBatchForHash,
+  onAnchorEvent,
+  startAnchorService,
+  stopAnchorService,
+} from "../src/main/anchor"
 
 import "dotenv/config"
 
@@ -121,6 +126,9 @@ ipcMain.handle(
         author: payload.author,
         timestamp: payload.timestamp,
         txHash: payload.txHash,
+        // При пакетной фиксации в реестре лежит голова цепи, а не хеш документа.
+        // Без этого блока сертификат отправил бы аудитора искать то, чего там нет.
+        batch: anchorBatchForHash(payload.hashHex),
       })
 
       return { ok: true, filePath: save.filePath }

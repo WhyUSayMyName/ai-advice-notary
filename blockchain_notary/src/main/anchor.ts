@@ -2,6 +2,8 @@ import { getDatabase, markArtifactNotarized } from "./database"
 import { notaryIsNotarized, notarySendAnchorRoot, notarySendNotarize } from "./notary"
 import { AnchorService, type AnchorEvent } from "./anchor-service"
 import { verifyChain } from "./chain-core"
+import { buildMerkleTree } from "./merkle-core"
+import type { CertificateBatch } from "./certificate"
 
 let service: AnchorService | null = null
 const listeners = new Set<(event: AnchorEvent) => void>()
@@ -70,6 +72,27 @@ export function listAnchorQueue() {
 /** Пакеты фиксации — «эпохи» ствола: каждая закрыта одной транзакцией. */
 export function listAnchorBatches() {
   return getDatabase().listAnchorBatches()
+}
+
+/**
+ * Пакет, в составе которого зафиксирован хеш, вместе с merkle-путём до корня.
+ * Нужен сертификату: при пакетной фиксации самого хеша в реестре нет,
+ * и без пути документ не связать с заякоренным значением.
+ */
+export function anchorBatchForHash(hash: string): CertificateBatch | undefined {
+  const batches = getDatabase().getAnchorBatchesForHash(hash)
+  // Один хеш может попасть в несколько пакетов при повторной фиксации —
+  // берём самый ранний: именно он доказывает момент времени.
+  const batch = batches[batches.length - 1]
+  if (!batch) return undefined
+
+  return {
+    root: batch.root,
+    leafCount: batch.leaf_count,
+    proof: buildMerkleTree(batch.members).proofFor(hash),
+    prevChainRoot: batch.prev_chain_root,
+    chainRoot: batch.chain_root,
+  }
 }
 
 /**
