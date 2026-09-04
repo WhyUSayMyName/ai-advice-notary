@@ -32,3 +32,4 @@ release/
 *.njsproj
 *.sln
 *.sw?
+build/icon.pdf

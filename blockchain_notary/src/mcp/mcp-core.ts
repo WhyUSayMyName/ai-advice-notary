@@ -1,6 +1,6 @@
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
+import { userDataDir } from "../main/app-paths"
 import type { AnchorQueueItem, NotaryDatabase } from "../main/database-core"
 import { canonicalizeDialog, newSalt, type DialogInput } from "../main/dialog-canon"
 import {
@@ -31,16 +31,7 @@ export type McpDeps = {
  */
 export function resolveSharedDbPath(): string {
   if (process.env.NOTARY_DB_PATH) return process.env.NOTARY_DB_PATH
-
-  const home = os.homedir()
-  const base =
-    process.platform === "win32"
-      ? process.env.APPDATA ?? path.join(home, "AppData", "Roaming")
-      : process.platform === "darwin"
-        ? path.join(home, "Library", "Application Support")
-        : process.env.XDG_CONFIG_HOME ?? path.join(home, ".config")
-
-  return path.join(base, "blockchain_notary", "notary.db")
+  return path.join(userDataDir(), "notary.db")
 }
 
 export function defaultArtifactsDir(dbPath: string): string {

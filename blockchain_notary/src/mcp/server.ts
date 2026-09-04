@@ -3,13 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
 import { createDatabase } from "../main/database-core"
-import { AnchorService } from "../main/anchor-service"
-import {
-  notaryIsNotarized,
-  notaryGetRecord,
-  notarySendNotarize,
-  notarySendAnchorRoot,
-} from "../main/notary"
+import { notaryGetRecord } from "../main/notary"
 import {
   attestDecision,
   defaultArtifactsDir,
@@ -24,10 +18,13 @@ import {
  * stdio-протокол: stdout принадлежит JSON-RPC, весь лог — строго в stderr.
  *
  * Конфигурация через env (обычно задаётся в .mcp.json клиента):
- *   NOTARY_DB_PATH  — путь к базе (по умолчанию общая с desktop-приложением)
- *   RPC_URL, NOTARY_ADDRESS, NOTARY_PK — доступ к чейну; без них сервер
- *   работает в режиме enqueue-only: хеши копятся в очереди и будут
- *   заякорены, когда воркер (здесь или в приложении) получит доступ к узлу.
+ *   NOTARY_DB_PATH — путь к базе (по умолчанию общая с desktop-приложением)
+ *
+ * Ключа подписи здесь нет и не должно быть. Сервер работает только в режиме
+ * enqueue-only: канонизирует, считает хеш и кладёт его в очередь. Якорит
+ * приложение — оно одно держит ключ в защищённом хранилище ОС. Плата за это
+ * — фиксация ждёт запуска приложения; выигрыш — ключ не лежит открытым
+ * текстом в конфиге MCP-клиента, который синхронизируется между машинами.
  */
 
 const log = (msg: string) => console.error(`[notary-mcp] ${msg}`)
@@ -37,44 +34,15 @@ const db = createDatabase(dbPath)
 const artifactsDir = process.env.NOTARY_ARTIFACTS_DIR ?? defaultArtifactsDir(dbPath)
 
 // Чтение реестра ключа не требует — проверить хеш может кто угодно.
-// Ключ нужен только чтобы отправлять транзакции.
 const canRead = Boolean(process.env.RPC_URL && process.env.NOTARY_ADDRESS)
-const canWrite = canRead && Boolean(process.env.NOTARY_PK)
 
-let deps: McpDeps
+const deps: McpDeps = { db, enqueue: (hash) => db.enqueueAnchor(hash), artifactsDir }
 
-if (canWrite) {
-  const service = new AnchorService(
-    db,
-    {
-      isNotarized: async (hash, rpcUrl) => (await notaryIsNotarized(hash, rpcUrl)).notarized,
-      sendNotarize: (hash, rpcUrl) => notarySendNotarize(hash, rpcUrl),
-      sendAnchorRoot: (root, leafCount, rpcUrl) => notarySendAnchorRoot(root, leafCount, rpcUrl),
-    },
-    (hash, txHash) => db.markArtifactNotarized(hash, txHash ?? ""),
-    (event) => log(`anchor: ${event.type} ${event.item.hash.slice(0, 10)}…`)
-  )
-  service
-    .recover()
-    .then((r) => {
-      if (r.confirmed || r.requeued) {
-        log(`recovery: confirmed=${r.confirmed}, requeued=${r.requeued}`)
-      }
-      service.start()
-    })
-    .catch((e) => log(`recovery failed: ${e instanceof Error ? e.message : e}`))
-
-  deps = { db, enqueue: (hash) => service.enqueue(hash), artifactsDir }
-  log("чейн сконфигурирован — anchor-воркер запущен")
-} else {
-  deps = { db, enqueue: (hash) => db.enqueueAnchor(hash), artifactsDir }
-  log(
-    canRead
-      ? "NOTARY_PK не задан — фиксации копятся в очереди, проверка хешей доступна"
-      : "RPC_URL/NOTARY_ADDRESS не заданы — режим enqueue-only"
-  )
-}
-
+log(
+  canRead
+    ? "режим enqueue-only: хеши копятся в очереди, якорит приложение; проверка хешей доступна"
+    : "режим enqueue-only: RPC_URL/NOTARY_ADDRESS не заданы, проверка хешей недоступна"
+)
 log(`база: ${dbPath}`)
 log(`артефакты: ${artifactsDir}`)
 

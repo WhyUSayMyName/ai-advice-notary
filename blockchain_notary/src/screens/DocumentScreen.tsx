@@ -1,4 +1,5 @@
-import { Button, Card, Chip, EmptyState, Pill, SectionLabel, short, formatTime } from "../components/ui"
+import { Button, Card, Chip, EmptyState, Pill, SectionLabel } from "../components/ui"
+import { short, formatTime } from "../components/format"
 
 const CHAIN_LABEL: Record<VersionChainStatus, string> = {
   OK: "Связь корректна",

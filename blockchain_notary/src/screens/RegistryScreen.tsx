@@ -1,31 +1,6 @@
-import {
-  Card,
-  Chip,
-  EmptyState,
-  Hash,
-  Pill,
-  Stat,
-  short,
-  formatTime,
-  fileDir,
-  fileName,
-} from "../components/ui"
-
-export const AUDIT_LABEL: Record<AuditStatus, string> = {
-  ON_CHAIN_OK: "Заякорен",
-  LOCAL_ONLY: "Локальный",
-  MISSING_FILE: "Файл утрачен",
-  HASH_MISMATCH: "Подмена",
-  ON_CHAIN_MISSING: "Нет в реестре",
-}
-
-export const AUDIT_TONE: Record<AuditStatus, "ok" | "warn" | "err" | "mut"> = {
-  ON_CHAIN_OK: "ok",
-  LOCAL_ONLY: "mut",
-  MISSING_FILE: "err",
-  HASH_MISMATCH: "err",
-  ON_CHAIN_MISSING: "warn",
-}
+import { Card, Chip, EmptyState, Hash, Pill, Stat } from "../components/ui"
+import { short, formatTime, fileDir, fileName } from "../components/format"
+import { AUDIT_LABEL, AUDIT_TONE } from "./audit-status"
 
 export function RegistryScreen({
   artifacts,

@@ -14,6 +14,9 @@ let instance: NotaryDatabase | null = null
 
 function getDb(): NotaryDatabase {
   if (!instance) {
+    // app.getPath("userData") и userDataDir() в app-paths обязаны совпадать —
+    // MCP-сервер вычисляет тот же путь без Electron. Расхождение развело бы
+    // приложение и MCP по разным базам, ничем этого не показав.
     instance = createDatabase(path.join(app.getPath("userData"), "notary.db"))
   }
   return instance

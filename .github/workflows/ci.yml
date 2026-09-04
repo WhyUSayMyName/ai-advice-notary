@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Новый пуш в ту же ветку отменяет предыдущий прогон
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Контракт
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Тесты Notary.sol
+        run: npx hardhat test
+
+  app:
+    name: Приложение
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: blockchain_notary
+    env:
+      # Бинарник Electron в CI не нужен: тесты гоняют ядра в чистом Node,
+      # а сборку установщика делает отдельная job на своей ОС.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: blockchain_notary/package-lock.json
+
+      - run: npm ci
+
+      - name: Типы
+        run: npx tsc --noEmit
+
+      - name: Линтер
+        run: npm run lint
+
+      - name: Тесты ядер
+        run: npm test
+
+      - name: Сборка MCP-сервера
+        run: npm run build:mcp
+
+      - name: Сборка renderer и main
+        run: npx vite build
+
+  verifier:
+    name: Верификатор
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: verifier-cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: verifier-cli/package-lock.json
+
+      - run: npm ci
+
+      # Верификатор аудитора обязан оставаться одним файлом с одной
+      # зависимостью — это его главное свойство, и оно проверяемо.
+      - name: Одна зависимость и никакого общего кода с приложением
+        run: node ../scripts/check-verifier-isolation.mjs
+
+      - name: Синтаксис верификатора
+        run: node --check verify.mjs

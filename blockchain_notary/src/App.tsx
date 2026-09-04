@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { Sidebar, type ScreenId } from "./components/Sidebar"
 import { Screen } from "./components/Screen"
-import { Button, Toast, short } from "./components/ui"
+import { Button, Toast } from "./components/ui"
+import { short } from "./components/format"
 import { RegistryScreen } from "./screens/RegistryScreen"
 import { DocumentScreen } from "./screens/DocumentScreen"
 import { AuditScreen } from "./screens/AuditScreen"
@@ -37,6 +38,8 @@ export default function App() {
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactRecord | null>(null)
   const [artifactHistory, setArtifactHistory] = useState<ArtifactRecord[]>([])
 
+  const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null)
+
   const [logs, setLogs] = useState<string[]>([])
   const log = (msg: string) =>
     setLogs((l) => [`[${new Date().toLocaleTimeString("ru-RU")}] ${msg}`, ...l].slice(0, 300))
@@ -45,10 +48,40 @@ export default function App() {
     document.documentElement.dataset.theme = theme
   }, [theme])
 
+
   // Подтверждение копирования само исчезает — модальность здесь была бы наказанием
   const notify = useCallback((text: string) => {
     setToast(text)
     setTimeout(() => setToast(null), 1800)
+  }, [])
+
+  const refreshKeyStatus = useCallback(async () => {
+    const res = await window.api.keyStatus()
+    if (res.ok && res.status) setKeyStatus(res.status)
+  }, [])
+
+  useEffect(() => {
+    void refreshKeyStatus()
+  }, [refreshKeyStatus])
+
+  // Возвращает текст ошибки или null. Сам ключ в состоянии не оседает:
+  // он уходит в main и стирается из поля ввода.
+  const saveKey = useCallback(
+    async (pk: string): Promise<string | null> => {
+      const res = await window.api.saveKey(pk)
+      if (!res.ok) return res.error ?? "Не удалось сохранить ключ"
+      if (res.status) setKeyStatus(res.status)
+      log(`Ключ подписи сохранён: ${res.address ?? ""}`)
+      notify("Ключ сохранён в хранилище ОС")
+      return null
+    },
+    [notify]
+  )
+
+  const clearKey = useCallback(async () => {
+    const res = await window.api.clearKey()
+    if (res.status) setKeyStatus(res.status)
+    log("Ключ подписи удалён из хранилища")
   }, [])
 
   const onHashCopied = useCallback(() => notify("Хеш скопирован"), [notify])
@@ -621,6 +654,9 @@ export default function App() {
         documentEnabled={Boolean(selectedArtifact)}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        keyStatus={keyStatus}
+        onSaveKey={saveKey}
+        onClearKey={() => void clearKey()}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

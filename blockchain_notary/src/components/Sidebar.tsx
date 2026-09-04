@@ -1,5 +1,6 @@
 import React from "react"
 import { Mark, Runes, Wordmark } from "./ui"
+import { KeyPanel } from "./KeyPanel"
 
 export type ScreenId = "registry" | "document" | "audit" | "queue" | "epochs" | "evidence"
 
@@ -82,6 +83,9 @@ export type SidebarProps = {
   documentEnabled: boolean
   theme: "dark" | "light"
   onToggleTheme: () => void
+  keyStatus: KeyStatus | null
+  onSaveKey: (pk: string) => Promise<string | null>
+  onClearKey: () => void
 }
 
 export function Sidebar({
@@ -99,6 +103,9 @@ export function Sidebar({
   documentEnabled,
   theme,
   onToggleTheme,
+  keyStatus,
+  onSaveKey,
+  onClearKey,
 }: SidebarProps) {
   return (
     <aside className="relative flex w-[232px] shrink-0 flex-col border-r border-line bg-panel px-2.5 py-3.5">
@@ -202,6 +209,10 @@ export function Sidebar({
           >
             {connected ? "Обновить" : "Подключить"}
           </button>
+        </div>
+
+        <div className="border-t border-line pt-2.5">
+          <KeyPanel status={keyStatus} onSave={onSaveKey} onClear={onClearKey} />
         </div>
 
         {/* Переключатель темы живёт среди настроек, а не рядом с «Зафиксировать».

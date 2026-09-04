@@ -1,7 +1,7 @@
 {
   "name": "blockchain_notary",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -50,5 +50,8 @@
     "vitest": "^4.1.10",
     "wait-on": "^9.0.3"
   },
-  "main": "dist-electron/main.js"
+  "main": "dist-electron/main.js",
+  "description": "Настольное приложение фиксации документов: хеши в очередь, merkle-пакеты и связанные эпохи — во внешний реестр",
+  "author": "WhyUSayMyName",
+  "license": "MIT"
 }

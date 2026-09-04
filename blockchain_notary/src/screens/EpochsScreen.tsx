@@ -1,4 +1,5 @@
-import { Card, EmptyState, Hash, Pill, SectionLabel, formatTime } from "../components/ui"
+import { Card, EmptyState, Hash, Pill, SectionLabel } from "../components/ui"
+import { formatTime } from "../components/format"
 
 /**
  * Кольца эпох — четвёртый ярус метафоры: ствол как связанный реестр фиксаций.

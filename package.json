@@ -1,14 +1,15 @@
 {
   "name": "ai-advice-notary",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.1.0",
+  "description": "Иггдрасиль — доказуемая фиксация неизменности документов: SHA-256 якорится во внешнем реестре, оригиналы остаются у владельца",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "hardhat test",
+    "check:verifier": "node scripts/check-verifier-isolation.mjs"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "WhyUSayMyName",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
@@ -17,5 +18,13 @@
     "hardhat": "^2.28.2",
     "solc": "^0.8.24",
     "typechain": "^8.3.2"
+  },
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WhyUSayMyName/ai-advice-notary.git"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

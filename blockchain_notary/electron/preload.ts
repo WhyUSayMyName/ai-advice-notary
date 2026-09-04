@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("notary:getRecord", hashHex, rpcUrl),
 
 
+  // ключ подписи (сам ключ через IPC не возвращается — только статус)
+  keyStatus: () => ipcRenderer.invoke("key:status"),
+  saveKey: (privateKey: string) => ipcRenderer.invoke("key:save", privateKey),
+  clearKey: () => ipcRenderer.invoke("key:clear"),
+
   exportEvidence: (rpcUrl?: string) =>
     ipcRenderer.invoke("evidence:export", rpcUrl),
 

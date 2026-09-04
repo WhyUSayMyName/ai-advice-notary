@@ -1,22 +1,5 @@
 import React from "react"
 
-/** Сокращает хеш до читаемого вида: 0x57ed…3a87 */
-export function short(s: string | null | undefined, n = 6) {
-  if (!s) return "—"
-  if (s.length <= n * 2 + 3) return s
-  return `${s.slice(0, n + 2)}…${s.slice(-n)}`
-}
-
-export function formatTime(ms: number) {
-  return new Date(ms).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
 type Tone = "ok" | "warn" | "info" | "err" | "mut" | "acc"
 
 const TONE: Record<Tone, string> = {
@@ -270,16 +253,6 @@ export function Runes({ width = 96, className = "" }: { width?: number; classNam
   )
 }
 
-/** Имя файла и каталог по отдельности — в реестре путь не должен дублироваться */
-export function fileName(p: string) {
-  return p.split(/[\\/]/).pop() || p
-}
-
-export function fileDir(p: string) {
-  const parts = p.split(/[\\/]/)
-  parts.pop()
-  return parts.join("\\")
-}
 
 /** Знак Иггдрасиля: ствол с ветвями и корнями — тот же, что в фирменном стиле */
 export function Mark({ size = 20, className = "" }: { size?: number; className?: string }) {

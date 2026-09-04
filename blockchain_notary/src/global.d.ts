@@ -90,6 +90,19 @@ type ChainVerdict =
   | { ok: true; head: string; length: number }
   | { ok: false; reason: string; brokenAt: number }
 
+/** Откуда воркер берёт приватный ключ */
+type KeyOrigin = "store" | "env" | "none"
+
+type KeyStatus = {
+  origin: KeyOrigin
+  /** ОС предоставляет шифрование (DPAPI / Keychain / libsecret) */
+  encryptionAvailable: boolean
+  /** Адрес подписанта — виден оператору, сам ключ не раскрывается */
+  address: string | null
+  /** NOTARY_PK найден в окружении: открытый текст на диске */
+  envKeyPresent: boolean
+}
+
 type AnchorUpdateEvent = {
   type: "queued" | "sent" | "confirmed" | "retry" | "failed" | "recovered"
   item: AnchorQueueItem
@@ -268,6 +281,18 @@ type AnchorUpdateEvent = {
       }>
 
       onAnchorUpdated: (callback: (event: AnchorUpdateEvent) => void) => () => void
+
+      keyStatus: () => Promise<{ ok: boolean; status?: KeyStatus; error?: string }>
+
+      /** Приватный ключ уходит в main и обратно не возвращается */
+      saveKey: (privateKey: string) => Promise<{
+        ok: boolean
+        address?: string
+        status?: KeyStatus
+        error?: string
+      }>
+
+      clearKey: () => Promise<{ ok: boolean; status?: KeyStatus; error?: string }>
 
       exportEvidence: (rpcUrl?: string) => Promise<{
         ok: boolean

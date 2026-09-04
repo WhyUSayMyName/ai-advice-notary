@@ -1,4 +1,5 @@
-import { Button, Card, EmptyState, Pill, short, formatTime } from "../components/ui"
+import { Button, Card, EmptyState, Pill } from "../components/ui"
+import { short, formatTime } from "../components/format"
 
 const LABEL: Record<AnchorStatus, string> = {
   pending: "В очереди",

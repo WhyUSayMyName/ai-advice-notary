@@ -1,5 +1,5 @@
 import { Card, EmptyState, Hash, Pill, Tree } from "../components/ui"
-import { AUDIT_LABEL, AUDIT_TONE } from "./RegistryScreen"
+import { AUDIT_LABEL, AUDIT_TONE } from "./audit-status"
 
 const EXPLAIN: Record<AuditStatus, string> = {
   ON_CHAIN_OK: "Файл, локальный реестр и внешний реестр согласованы",

@@ -48,14 +48,30 @@ function handlesFor(rpcUrl?: string): Handles {
   return active
 }
 
+/**
+ * Источник приватного ключа. По умолчанию — окружение, чтобы e2e и скрипты
+ * работали как прежде; приложение подменяет его на защищённое хранилище ОС
+ * (см. key-store.ts). Модуль сознательно не знает про Electron.
+ */
+let privateKeyProvider: () => string | null = () => process.env.NOTARY_PK ?? null
+
+export function setPrivateKeyProvider(provider: () => string | null) {
+  privateKeyProvider = provider
+  // Подписант мог смениться — контракт на запись пересоздастся с новым ключом
+  if (active) active.write = undefined
+}
+
 function writeContract(rpcUrl?: string): Contract {
   const h = handlesFor(rpcUrl)
   if (!h.write) {
-    h.write = new Contract(
-      mustEnv("NOTARY_ADDRESS"),
-      NOTARY_ABI,
-      new Wallet(mustEnv("NOTARY_PK"), h.provider)
-    )
+    const pk = privateKeyProvider()
+    if (!pk) {
+      throw new Error(
+        "Ключ подписи не задан. Укажите его в разделе «Ключ подписи» — он будет " +
+          "сохранён в защищённом хранилище операционной системы."
+      )
+    }
+    h.write = new Contract(mustEnv("NOTARY_ADDRESS"), NOTARY_ABI, new Wallet(pk, h.provider))
   }
   return h.write
 }

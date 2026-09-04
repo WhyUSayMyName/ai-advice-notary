@@ -10,7 +10,9 @@ import {
   notaryGetRecord,
   notaryChainId,
   disposeChain,
+  setPrivateKeyProvider,
 } from "../src/main/notary"
+import { getKeyStore } from "../src/main/key-store"
 import { generateCertificatePdf } from "../src/main/certificate"
 import { exportEvidenceBundle } from "../src/main/evidence"
 import {
@@ -83,6 +85,37 @@ ipcMain.handle("notary:isNotarized", async (_e, hashHex: string, rpcUrl?: string
 ipcMain.handle("notary:getRecord", async (_e, hashHex: string, rpcUrl?: string) => {
   try {
     return { ok: true, ...(await notaryGetRecord(hashHex, rpcUrl)) }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
+// Ключ подписи. Наружу отдаётся только статус — сам ключ не покидает
+// main-процесс ни в ответе, ни в логе.
+ipcMain.handle("key:status", async () => {
+  try {
+    return { ok: true, status: getKeyStore().status() }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
+ipcMain.handle("key:save", async (_e, privateKey: string) => {
+  try {
+    const address = getKeyStore().save(privateKey)
+    // Контракт на запись мог быть создан со старым подписантом
+    setPrivateKeyProvider(() => getKeyStore().read())
+    return { ok: true, address, status: getKeyStore().status() }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
+ipcMain.handle("key:clear", async () => {
+  try {
+    getKeyStore().clear()
+    setPrivateKeyProvider(() => getKeyStore().read())
+    return { ok: true, status: getKeyStore().status() }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
@@ -272,6 +305,10 @@ onAnchorEvent((event) => {
 })
 
 app.whenReady().then(() => {
+  // Подписант берётся из защищённого хранилища ОС. Ставится до старта воркера:
+  // иначе первая же отправка ушла бы с ключом из окружения.
+  setPrivateKeyProvider(() => getKeyStore().read())
+
   createSplash()
   const splashShownAt = Date.now()
 
