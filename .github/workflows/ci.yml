@@ -23,17 +23,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Установка зависимостей
-        run: |
-          set +e
-          out=$(npm ci 2>&1); code=$?
-          echo "$out"
-          if [ $code -ne 0 ]; then
-            printf '::error::%s
-' "$(echo "$out" | grep -iE 'npm error|gyp|ERR!' | tail -n 25 | sed ':a;N;$!ba;s/
-/%0A/g')"
-            exit $code
-          fi
+      - run: npm ci
 
       - name: Тесты Notary.sol
         run: npx hardhat test
@@ -46,7 +36,7 @@ jobs:
         working-directory: blockchain_notary
     env:
       # Бинарник Electron в CI не нужен: тесты гоняют ядра в чистом Node,
-      # а сборку установщика делает отдельная job на своей ОС.
+      # а установщик собирается на своей ОС отдельно.
       ELECTRON_SKIP_BINARY_DOWNLOAD: 1
     steps:
       - uses: actions/checkout@v4
@@ -57,19 +47,7 @@ jobs:
           cache: npm
           cache-dependency-path: blockchain_notary/package-lock.json
 
-      - name: Установка зависимостей
-        run: |
-          set +e
-          out=$(npm ci 2>&1); code=$?
-          echo "$out"
-          if [ $code -ne 0 ]; then
-            # Хвост ошибки уходит в аннотацию: лог job'а читается только
-            # с админ-правами, а аннотации доступны через API любому
-            printf '::error::%s
-' "$(echo "$out" | grep -iE 'npm error|gyp|ERR!' | tail -n 25 | sed ':a;N;$!ba;s/
-/%0A/g')"
-            exit $code
-          fi
+      - run: npm ci
 
       - name: Типы
         run: npx tsc --noEmit
@@ -101,17 +79,7 @@ jobs:
           cache: npm
           cache-dependency-path: verifier-cli/package-lock.json
 
-      - name: Установка зависимостей
-        run: |
-          set +e
-          out=$(npm ci 2>&1); code=$?
-          echo "$out"
-          if [ $code -ne 0 ]; then
-            printf '::error::%s
-' "$(echo "$out" | grep -iE 'npm error|gyp|ERR!' | tail -n 25 | sed ':a;N;$!ba;s/
-/%0A/g')"
-            exit $code
-          fi
+      - run: npm ci
 
       # Верификатор аудитора обязан оставаться одним файлом с одной
       # зависимостью — это его главное свойство, и оно проверяемо.
