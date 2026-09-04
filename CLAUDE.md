@@ -139,8 +139,24 @@ CACHE="$LOCALAPPDATA/electron-builder/Cache/winCodeSign"
 
 **Ловушка better-sqlite3:** основная копия собрана под ABI Electron. Всё, что
 работает в чистом Node (vitest, MCP-бандл), использует алиас `better-sqlite3-node`
-(vitest.config.ts / scripts/build-mcp.mjs). Не «чинить» это npm rebuild'ом —
-сломаешь либо приложение, либо тесты.
+(vitest.config.ts / scripts/build-mcp.mjs). Любой `npm install` в
+`blockchain_notary` ставит для `better-sqlite3` prebuild под ABI текущего Node
+и тем самым ломает приложение — тесты при этом продолжают проходить, потому что
+идут через алиас, так что заметить это по зелёному прогону нельзя. Лечится не
+`npm rebuild`, а загрузкой prebuild'а под Electron:
+
+```shell
+cd blockchain_notary/node_modules/better-sqlite3
+npx prebuild-install -r electron -t 30.5.1
+```
+
+Проверка (бинарник грузится ЛЕНИВО, в конструкторе — простой `require` проходит
+всегда и ничего не доказывает):
+
+```shell
+node -e "new (require('better-sqlite3'))(':memory:')"       # должно упасть: ABI 123 против 137
+node -e "new (require('better-sqlite3-node'))(':memory:')"  # должно пройти
+```
 
 **MCP-сервер — stdio:** stdout принадлежит JSON-RPC. Любой вывод — только в stderr
 (баннер esbuild уже перенаправляет console.log). Не добавлять console.log в код,
