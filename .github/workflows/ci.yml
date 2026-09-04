@@ -23,7 +23,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - run: bash $GITHUB_WORKSPACE/scripts/ci-install.sh
 
       - name: Тесты Notary.sol
         run: npx hardhat test
@@ -47,7 +47,7 @@ jobs:
           cache: npm
           cache-dependency-path: blockchain_notary/package-lock.json
 
-      - run: npm ci
+      - run: bash $GITHUB_WORKSPACE/scripts/ci-install.sh
 
       - name: Типы
         run: npx tsc --noEmit
@@ -79,7 +79,7 @@ jobs:
           cache: npm
           cache-dependency-path: verifier-cli/package-lock.json
 
-      - run: npm ci
+      - run: bash $GITHUB_WORKSPACE/scripts/ci-install.sh
 
       # Верификатор аудитора обязан оставаться одним файлом с одной
       # зависимостью — это его главное свойство, и оно проверяемо.
