@@ -49,7 +49,18 @@ jobs:
           cache-dependency-path: blockchain_notary/package-lock.json
 
       - name: Установка зависимостей
-        run: npm ci || { tail -n 120 "$HOME/.npm/_logs/"*.log; exit 1; }
+        run: |
+          set +e
+          out=$(npm ci 2>&1); code=$?
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            # Хвост ошибки уходит в аннотацию: лог job'а читается только
+            # с админ-правами, а аннотации доступны через API любому
+            printf '::error::%s
+' "$(echo "$out" | grep -iE 'npm error|gyp|ERR!' | tail -n 25 | sed ':a;N;$!ba;s/
+/%0A/g')"
+            exit $code
+          fi
 
       - name: Типы
         run: npx tsc --noEmit
