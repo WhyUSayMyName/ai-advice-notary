@@ -23,7 +23,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - name: Установка зависимостей
+        run: npm ci || { tail -n 80 "$HOME/.npm/_logs/"*.log; exit 1; }
 
       - name: Тесты Notary.sol
         run: npx hardhat test
@@ -47,7 +48,8 @@ jobs:
           cache: npm
           cache-dependency-path: blockchain_notary/package-lock.json
 
-      - run: npm ci
+      - name: Установка зависимостей
+        run: npm ci || { tail -n 120 "$HOME/.npm/_logs/"*.log; exit 1; }
 
       - name: Типы
         run: npx tsc --noEmit
@@ -79,7 +81,8 @@ jobs:
           cache: npm
           cache-dependency-path: verifier-cli/package-lock.json
 
-      - run: npm ci
+      - name: Установка зависимостей
+        run: npm ci || { tail -n 80 "$HOME/.npm/_logs/"*.log; exit 1; }
 
       # Верификатор аудитора обязан оставаться одним файлом с одной
       # зависимостью — это его главное свойство, и оно проверяемо.
