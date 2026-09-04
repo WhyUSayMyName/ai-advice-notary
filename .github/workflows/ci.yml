@@ -24,7 +24,16 @@ jobs:
           cache: npm
 
       - name: Установка зависимостей
-        run: npm ci || { tail -n 80 "$HOME/.npm/_logs/"*.log; exit 1; }
+        run: |
+          set +e
+          out=$(npm ci 2>&1); code=$?
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            printf '::error::%s
+' "$(echo "$out" | grep -iE 'npm error|gyp|ERR!' | tail -n 25 | sed ':a;N;$!ba;s/
+/%0A/g')"
+            exit $code
+          fi
 
       - name: Тесты Notary.sol
         run: npx hardhat test
@@ -93,7 +102,16 @@ jobs:
           cache-dependency-path: verifier-cli/package-lock.json
 
       - name: Установка зависимостей
-        run: npm ci || { tail -n 80 "$HOME/.npm/_logs/"*.log; exit 1; }
+        run: |
+          set +e
+          out=$(npm ci 2>&1); code=$?
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            printf '::error::%s
+' "$(echo "$out" | grep -iE 'npm error|gyp|ERR!' | tail -n 25 | sed ':a;N;$!ba;s/
+/%0A/g')"
+            exit $code
+          fi
 
       # Верификатор аудитора обязан оставаться одним файлом с одной
       # зависимостью — это его главное свойство, и оно проверяемо.
