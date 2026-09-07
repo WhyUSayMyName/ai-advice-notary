@@ -1,3 +1,4 @@
+import "dotenv/config";
 import path from "path";
 import { subtask } from "hardhat/config";
 import { TASK_COMPILE_SOLIDITY_GET_SOLC_BUILD } from "hardhat/builtin-tasks/task-names";
@@ -21,12 +22,38 @@ subtask(TASK_COMPILE_SOLIDITY_GET_SOLC_BUILD).setAction(async (): Promise<SolcBu
   };
 });
 
+// Ключ деплоя. Отдельный от ключа подписи в приложении: деплой делается
+// один раз из командной строки, а якорит приложение — из хранилища ОС.
+// Здесь ключ неизбежно лежит открытым текстом в .env, поэтому годится
+// ТОЛЬКО одноразовый тестовый аккаунт без реальных средств.
+const deployerKey = process.env.DEPLOYER_PK?.trim();
+const accounts = deployerKey ? [deployerKey] : [];
+
 const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.24",
     settings: {
       optimizer: { enabled: true, runs: 200 },
     },
+  },
+  networks: {
+    // Локальный узел: npx hardhat node
+    localhost: {
+      url: process.env.RPC_URL ?? "http://127.0.0.1:8545",
+    },
+    // Публичный тестнет Ethereum. Без SEPOLIA_RPC_URL сеть остаётся
+    // объявленной, но неработоспособной — hardhat скажет об этом внятно.
+    sepolia: {
+      url: process.env.SEPOLIA_RPC_URL ?? "",
+      accounts,
+      chainId: 11155111,
+    },
+  },
+  etherscan: {
+    // Верификация исходников контракта. Для аудитора это не украшение:
+    // модель угроз требует, чтобы он мог прочитать РАЗВЁРНУТЫЙ код, а не
+    // поверить оператору на слово, что задеплоено именно то, что в репозитории.
+    apiKey: process.env.ETHERSCAN_API_KEY ?? "",
   },
 };
 
