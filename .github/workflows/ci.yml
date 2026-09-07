@@ -23,10 +23,11 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: bash $GITHUB_WORKSPACE/scripts/ci-install.sh
+      - name: Установка зависимостей
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "npm ci" npm ci
 
       - name: Тесты Notary.sol
-        run: npx hardhat test
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "Тесты контракта" npx hardhat test
 
   app:
     name: Приложение
@@ -47,22 +48,23 @@ jobs:
           cache: npm
           cache-dependency-path: blockchain_notary/package-lock.json
 
-      - run: bash $GITHUB_WORKSPACE/scripts/ci-install.sh
+      - name: Установка зависимостей
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "npm ci" npm ci
 
       - name: Типы
-        run: npx tsc --noEmit
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "Типы" npx tsc --noEmit
 
       - name: Линтер
-        run: npm run lint
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "Линтер" npm run lint
 
       - name: Тесты ядер
-        run: npm test
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "Тесты ядер" npm test
 
       - name: Сборка MCP-сервера
-        run: npm run build:mcp
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "Сборка MCP" npm run build:mcp
 
       - name: Сборка renderer и main
-        run: npx vite build
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "Сборка renderer" npx vite build
 
   verifier:
     name: Верификатор
@@ -79,7 +81,8 @@ jobs:
           cache: npm
           cache-dependency-path: verifier-cli/package-lock.json
 
-      - run: bash $GITHUB_WORKSPACE/scripts/ci-install.sh
+      - name: Установка зависимостей
+        run: bash $GITHUB_WORKSPACE/scripts/ci-step.sh "npm ci" npm ci
 
       # Верификатор аудитора обязан оставаться одним файлом с одной
       # зависимостью — это его главное свойство, и оно проверяемо.
