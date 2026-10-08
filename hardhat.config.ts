@@ -11,7 +11,12 @@ import "@nomicfoundation/hardhat-toolbox";
 // (позволяет собирать проект в офлайне и за строгим прокси).
 const soljsonPath = path.join(__dirname, "node_modules", "solc", "soljson.js");
 const solc = require("solc");
-const longVersion: string = solc.version();
+// solc-js называет себя с суффиксом сборки: «0.8.24+commit.e11b9ed9.Emscripten.clang».
+// Это тот же компилятор — тот же коммит, побайтно тот же результат, — но Etherscan
+// строку с суффиксом не принимает, и верификация исходников падала с «Invalid Or
+// Not supported solc version». Метка версии в байткод не попадает: в метаданные
+// контракта компилятор пишет её сам.
+const longVersion: string = solc.version().replace(/\.Emscripten\.clang$/, "");
 
 subtask(TASK_COMPILE_SOLIDITY_GET_SOLC_BUILD).setAction(async (): Promise<SolcBuild> => {
   return {
