@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld("api", {
   // ключ подписи (сам ключ через IPC не возвращается — только статус)
   keyStatus: () => ipcRenderer.invoke("key:status"),
   saveKey: (privateKey: string) => ipcRenderer.invoke("key:save", privateKey),
+  generateKey: () => ipcRenderer.invoke("key:generate"),
   clearKey: () => ipcRenderer.invoke("key:clear"),
 
   exportEvidence: (rpcUrl?: string) =>

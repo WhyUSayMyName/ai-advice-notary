@@ -102,6 +102,15 @@ export default function App() {
     [notify]
   )
 
+  const generateKey = useCallback(async (): Promise<string | null> => {
+    const res = await window.api.generateKey()
+    if (!res.ok) return res.error ?? "Не удалось создать ключ"
+    if (res.status) setKeyStatus(res.status)
+    log(`Создан ключ подписи в хранилище ОС: ${res.address ?? ""}`)
+    notify("Ключ создан — пополните его адрес")
+    return null
+  }, [notify])
+
   const clearKey = useCallback(async () => {
     const res = await window.api.clearKey()
     if (res.status) setKeyStatus(res.status)
@@ -685,6 +694,7 @@ export default function App() {
         onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
         keyStatus={keyStatus}
         onSaveKey={saveKey}
+        onGenerateKey={generateKey}
         onClearKey={() => void clearKey()}
       />
 

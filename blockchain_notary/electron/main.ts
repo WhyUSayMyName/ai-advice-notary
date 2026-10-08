@@ -117,6 +117,17 @@ ipcMain.handle("key:save", async (_e, privateKey: string) => {
   }
 })
 
+// Ключ рождается внутри хранилища: в ответ уходит только адрес
+ipcMain.handle("key:generate", async () => {
+  try {
+    const address = getKeyStore().generate()
+    setPrivateKeyProvider(() => getKeyStore().read())
+    return { ok: true, address, status: getKeyStore().status() }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
 ipcMain.handle("key:clear", async () => {
   try {
     getKeyStore().clear()

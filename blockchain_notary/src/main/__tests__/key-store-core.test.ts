@@ -129,6 +129,66 @@ describe("createKeyStore", () => {
     expect(store.status().encryptionAvailable).toBe(false)
   })
 
+  it("generate создаёт ключ прямо в хранилище и отдаёт только адрес", () => {
+    const store = createKeyStore(dir, fakeCipher(), () => undefined)
+
+    const address = store.generate()
+
+    expect(address).toMatch(/^0x[0-9a-fA-F]{40}$/)
+    expect(addressOf(store.read()!)).toBe(address)
+    expect(store.status()).toMatchObject({ origin: "store", address })
+    // На диске — только шифротекст
+    const raw = fs.readFileSync(path.join(dir, "notary-key.enc"))
+    expect(raw.toString("latin1")).not.toContain(store.read()!.slice(2))
+  })
+
+  it("generate каждый раз создаёт новый ключ", () => {
+    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "keystore-"))
+    try {
+      const a = createKeyStore(dir, fakeCipher(), () => undefined).generate()
+      const b = createKeyStore(dir2, fakeCipher(), () => undefined).generate()
+      expect(a).not.toBe(b)
+    } finally {
+      fs.rmSync(dir2, { recursive: true, force: true })
+    }
+  })
+
+  // Затереть сохранённый ключ — потерять средства на его адресе без возврата
+  it("generate не затирает уже сохранённый ключ", () => {
+    const store = createKeyStore(dir, fakeCipher(), () => undefined)
+    store.save(PK)
+
+    expect(() => store.generate()).toThrow(/уже есть ключ/)
+    expect(store.read()).toBe(PK)
+  })
+
+  // Нечитаемый файл бывает ключом другой учётной записи Windows: на этой он
+  // бесполезен, но на своей — рабочий. Молча перезаписать его нельзя
+  it("generate не затирает даже нечитаемый файл ключа", () => {
+    const keyFile = path.join(dir, "notary-key.enc")
+    fs.writeFileSync(keyFile, Buffer.from([1, 2, 3, 4]))
+
+    const store = createKeyStore(dir, fakeCipher(), () => undefined)
+    expect(() => store.generate()).toThrow(/уже есть ключ/)
+    expect([...fs.readFileSync(keyFile)]).toEqual([1, 2, 3, 4])
+  })
+
+  it("generate при ключе из окружения создаёт ключ в хранилище — он главнее", () => {
+    const store = createKeyStore(dir, fakeCipher(), () => PK)
+
+    const address = store.generate()
+
+    expect(address).not.toBe(ADDRESS)
+    expect(store.status()).toMatchObject({ origin: "store", address, envKeyPresent: true })
+  })
+
+  it("generate без шифрования ОС отказывает и ничего не пишет", () => {
+    const store = createKeyStore(dir, fakeCipher(false), () => undefined)
+
+    expect(() => store.generate()).toThrow(/защищённое хранилище/)
+    expect(fs.existsSync(path.join(dir, "notary-key.enc"))).toBe(false)
+  })
+
   it("save отвергает испорченный ключ до записи на диск", () => {
     const store = createKeyStore(dir, fakeCipher(), () => undefined)
 

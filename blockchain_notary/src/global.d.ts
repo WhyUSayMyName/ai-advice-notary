@@ -304,6 +304,14 @@ type AnchorUpdateEvent = {
         error?: string
       }>
 
+      /** Ключ создаётся внутри хранилища ОС; наружу — только адрес */
+      generateKey: () => Promise<{
+        ok: boolean
+        address?: string
+        status?: KeyStatus
+        error?: string
+      }>
+
       clearKey: () => Promise<{ ok: boolean; status?: KeyStatus; error?: string }>
 
       exportEvidence: (rpcUrl?: string) => Promise<{

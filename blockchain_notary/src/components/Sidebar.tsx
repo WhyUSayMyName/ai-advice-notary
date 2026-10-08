@@ -88,6 +88,7 @@ export type SidebarProps = {
   onToggleTheme: () => void
   keyStatus: KeyStatus | null
   onSaveKey: (pk: string) => Promise<string | null>
+  onGenerateKey: () => Promise<string | null>
   onClearKey: () => void
 }
 
@@ -109,6 +110,7 @@ export function Sidebar({
   onToggleTheme,
   keyStatus,
   onSaveKey,
+  onGenerateKey,
   onClearKey,
 }: SidebarProps) {
   return (
@@ -217,7 +219,12 @@ export function Sidebar({
         </div>
 
         <div className="border-t border-line pt-2.5">
-          <KeyPanel status={keyStatus} onSave={onSaveKey} onClear={onClearKey} />
+          <KeyPanel
+            status={keyStatus}
+            onSave={onSaveKey}
+            onGenerate={onGenerateKey}
+            onClear={onClearKey}
+          />
         </div>
 
         {/* Переключатель темы живёт среди настроек, а не рядом с «Зафиксировать».

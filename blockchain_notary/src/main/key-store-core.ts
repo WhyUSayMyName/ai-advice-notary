@@ -38,6 +38,12 @@ export type KeyStore = {
   status(): KeyStatus
   /** Сохраняет ключ зашифрованным. Возвращает адрес подписанта. */
   save(privateKey: string): string
+  /**
+   * Создаёт новый ключ сразу в хранилище и возвращает только адрес.
+   * Ключ не существует нигде, кроме зашифрованного файла: ни на экране,
+   * ни в буфере обмена, ни в .env. Отказывает, если файл ключа уже есть.
+   */
+  generate(): string
   /** Удаляет сохранённый ключ. Ключ из окружения этим не убрать. */
   clear(): void
   /**
@@ -107,8 +113,36 @@ export function createKeyStore(
 
   const read = (): string | null => readStored() ?? readEnv()
 
+  const save = (privateKey: string): string => {
+    if (!cipher.available()) {
+      throw new Error(
+        "Операционная система не предоставляет защищённое хранилище — сохранить ключ нельзя"
+      )
+    }
+    const normalized = normalizePrivateKey(privateKey)
+    fs.mkdirSync(dir, { recursive: true })
+    // Права 0600: на POSIX файл не должен читаться другими пользователями.
+    // На Windows режим игнорируется, там защиту даёт сам DPAPI.
+    fs.writeFileSync(file, cipher.encrypt(normalized), { mode: 0o600 })
+    return new Wallet(normalized).address
+  }
+
   return {
     read,
+    save,
+
+    generate() {
+      // Проверяется наличие файла, а не читаемость: нечитаемый файл бывает
+      // ключом другой учётной записи. Затереть его — потерять доступ к средствам
+      // на его адресе без возможности вернуть
+      if (fs.existsSync(file)) {
+        throw new Error(
+          "В хранилище уже есть ключ. Чтобы создать новый, сначала удалите старый — " +
+            "средства на его адресе станут недоступны"
+        )
+      }
+      return save(Wallet.createRandom().privateKey)
+    },
 
     status() {
       const stored = readStored()
@@ -121,20 +155,6 @@ export function createKeyStore(
         address: active ? addressOf(active) : null,
         envKeyPresent: Boolean(envKey()),
       }
-    },
-
-    save(privateKey) {
-      if (!cipher.available()) {
-        throw new Error(
-          "Операционная система не предоставляет защищённое хранилище — сохранить ключ нельзя"
-        )
-      }
-      const normalized = normalizePrivateKey(privateKey)
-      fs.mkdirSync(dir, { recursive: true })
-      // Права 0600: на POSIX файл не должен читаться другими пользователями.
-      // На Windows режим игнорируется, там защиту даёт сам DPAPI.
-      fs.writeFileSync(file, cipher.encrypt(normalized), { mode: 0o600 })
-      return new Wallet(normalized).address
     },
 
     clear() {

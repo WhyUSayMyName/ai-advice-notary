@@ -6,23 +6,30 @@ const SHORT = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
  * Управление ключом подписи.
  *
  * Ключ никогда не показывается: поле ввода одноразовое, наружу из main
- * приходит только адрес. Состояние «ключ лежит в .env» показано тревожным
- * цветом намеренно — это открытый текст на диске, и оператор должен видеть
- * это каждый раз, а не узнать при разборе инцидента.
+ * приходит только адрес. Правильный путь — создать ключ прямо в хранилище:
+ * тогда он не существует нигде, кроме зашифрованного файла. Состояние «ключ
+ * лежит в .env» показано тревожным цветом намеренно — это открытый текст на
+ * диске, и оператор должен видеть это каждый раз, а не узнать при разборе
+ * инцидента.
  */
 export function KeyPanel({
   status,
   onSave,
+  onGenerate,
   onClear,
 }: {
   status: KeyStatus | null
   onSave: (pk: string) => Promise<string | null>
+  onGenerate: () => Promise<string | null>
   onClear: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [justCreated, setJustCreated] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const save = async () => {
     setBusy(true)
@@ -32,10 +39,28 @@ export function KeyPanel({
     if (!err) {
       setValue("")
       setOpen(false)
+      setJustCreated(false)
     }
   }
 
+  const generate = async () => {
+    setBusy(true)
+    const err = await onGenerate()
+    setBusy(false)
+    setError(err)
+    if (!err) setJustCreated(true)
+  }
+
+  // Адрес публичен — его можно и нужно копировать, чтобы пополнить
+  const copyAddress = async () => {
+    if (!status?.address) return
+    await navigator.clipboard.writeText(status.address)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
   const origin = status?.origin ?? "none"
+  const canEncrypt = status ? status.encryptionAvailable : true
 
   return (
     <div className="space-y-1.5">
@@ -45,7 +70,10 @@ export function KeyPanel({
         </div>
         {origin !== "none" ? (
           <button
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => {
+              setOpen((v) => !v)
+              setError(null)
+            }}
             className="text-[11px] text-muted transition-colors hover:text-ink"
           >
             {open ? "Отмена" : "Заменить"}
@@ -54,18 +82,59 @@ export function KeyPanel({
       </div>
 
       {origin === "store" ? (
-        <div className="flex items-center gap-1.5 text-[11.5px] text-muted">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok shadow-[0_0_0_3px_var(--ok-bg)]" />
-          <span className="mono truncate text-ink">
-            {status?.address ? SHORT(status.address) : "сохранён"}
-          </span>
-          <button
-            onClick={onClear}
-            title="Удалить ключ из защищённого хранилища"
-            className="ml-auto text-[11px] text-muted transition-colors hover:text-err"
-          >
-            Удалить
-          </button>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-[11.5px] text-muted">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok shadow-[0_0_0_3px_var(--ok-bg)]" />
+            <button
+              onClick={() => void copyAddress()}
+              title={status?.address ? `${status.address} — скопировать` : undefined}
+              className="mono truncate text-ink transition-opacity hover:opacity-80"
+            >
+              {copied ? "адрес скопирован" : status?.address ? SHORT(status.address) : "сохранён"}
+            </button>
+            <button
+              onClick={() => setConfirmClear(true)}
+              title="Удалить ключ из защищённого хранилища"
+              className="ml-auto text-[11px] text-muted transition-colors hover:text-err"
+            >
+              Удалить
+            </button>
+          </div>
+
+          {justCreated ? (
+            <div className="text-[11px] leading-snug text-muted">
+              Новый адрес пуст. Скопируйте его и пополните эфиром той сети, куда якорите, — без
+              газа фиксации не уйдут.
+            </div>
+          ) : null}
+
+          {/* Сгенерированный ключ существует только здесь: удаление необратимо */}
+          {confirmClear ? (
+            <div className="rounded-[var(--radius-s)] bg-err-bg px-2 py-1.5">
+              <div className="text-[11px] leading-snug text-err">
+                Других копий ключа может не быть. Средства на его адресе станут недоступны
+                навсегда.
+              </div>
+              <div className="mt-1.5 flex gap-3">
+                <button
+                  onClick={() => {
+                    setConfirmClear(false)
+                    setJustCreated(false)
+                    onClear()
+                  }}
+                  className="text-[11px] font-medium text-err transition-opacity hover:opacity-80"
+                >
+                  Удалить безвозвратно
+                </button>
+                <button
+                  onClick={() => setConfirmClear(false)}
+                  className="text-[11px] text-muted transition-colors hover:text-ink"
+                >
+                  Оставить
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -73,7 +142,7 @@ export function KeyPanel({
         <div className="rounded-[var(--radius-s)] bg-err-bg px-2 py-1.5">
           <div className="text-[11.5px] font-medium text-err">Ключ в .env, открытым текстом</div>
           <div className="mt-0.5 text-[11px] leading-snug text-muted">
-            Годится для разработки. Для рабочей установки сохраните его в хранилище ОС и удалите
+            Годится для разработки. Для рабочей установки создайте ключ в хранилище ОС и удалите
             строку из .env.
           </div>
           {status?.address ? (
@@ -81,12 +150,21 @@ export function KeyPanel({
               {SHORT(status.address)}
             </div>
           ) : null}
-          <button
-            onClick={() => setOpen(true)}
-            className="mt-1.5 text-[11px] font-medium text-accent-hi transition-opacity hover:opacity-80"
-          >
-            Перенести в защищённое хранилище
-          </button>
+          <div className="mt-1.5 flex gap-3">
+            <button
+              onClick={() => void generate()}
+              disabled={busy || !canEncrypt}
+              className="text-[11px] font-medium text-accent-hi transition-opacity hover:opacity-80 disabled:opacity-40"
+            >
+              Создать ключ в хранилище
+            </button>
+            <button
+              onClick={() => setOpen(true)}
+              className="text-[11px] text-muted transition-colors hover:text-ink"
+            >
+              перенести этот
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -95,20 +173,40 @@ export function KeyPanel({
           <div className="text-[11px] leading-snug text-muted">
             Не задан — фиксации будут копиться в очереди.
           </div>
-          <button
-            onClick={() => setOpen(true)}
-            className="text-[11px] font-medium text-accent-hi transition-opacity hover:opacity-80"
-          >
-            Задать ключ
-          </button>
+          <div className="flex items-baseline gap-3">
+            <button
+              onClick={() => void generate()}
+              disabled={busy || !canEncrypt}
+              className="text-[11px] font-medium text-accent-hi transition-opacity hover:opacity-80 disabled:opacity-40"
+            >
+              {busy ? "Создание…" : "Создать ключ"}
+            </button>
+            <button
+              onClick={() => setOpen(true)}
+              className="text-[11px] text-muted transition-colors hover:text-ink"
+            >
+              ввести свой
+            </button>
+          </div>
+          <div className="text-[11px] leading-snug text-faint">
+            Ключ создаётся сразу в хранилище ОС и нигде не показывается.
+          </div>
         </div>
       ) : null}
 
+      {!canEncrypt ? (
+        <div className="text-[11px] leading-snug text-err">
+          Система не предоставляет защищённое хранилище — сохранить ключ нельзя.
+        </div>
+      ) : null}
+
+      {error && !open ? <div className="text-[11px] leading-snug text-err">{error}</div> : null}
+
       {open ? (
         <div className="space-y-1.5">
-          {status && !status.encryptionAvailable ? (
+          {origin === "store" ? (
             <div className="text-[11px] leading-snug text-err">
-              Система не предоставляет защищённое хранилище — сохранить ключ нельзя.
+              Текущий ключ будет заменён безвозвратно.
             </div>
           ) : null}
 
@@ -137,7 +235,7 @@ export function KeyPanel({
 
           <button
             onClick={() => void save()}
-            disabled={!value || busy || (status ? !status.encryptionAvailable : false)}
+            disabled={!value || busy || !canEncrypt}
             className="w-full rounded-[var(--radius-s)] bg-accent px-2 py-1.5 text-[11.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy ? "Сохранение…" : "Сохранить"}
