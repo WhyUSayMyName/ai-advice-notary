@@ -20,6 +20,7 @@ function makeFakeChain() {
   const net = () => networks.get(current)!
   let failSends = 0
   let failWaits = 0
+  let hangWaits = 0
   let sentTxCount = 0
   const anchoredRoots: Array<{ root: string; leafCount: number }> = []
 
@@ -29,6 +30,11 @@ function makeFakeChain() {
     return {
       txHash,
       wait: async () => {
+        if (hangWaits > 0) {
+          hangWaits--
+          // Транзакция повисла в мемпуле: подтверждение не придёт никогда
+          return new Promise<never>(() => {})
+        }
         if (failWaits > 0) {
           failWaits--
           throw new Error("node died while waiting")
@@ -76,6 +82,7 @@ function makeFakeChain() {
     txCount: () => sentTxCount,
     setFailSends: (n: number) => (failSends = n),
     setFailWaits: (n: number) => (failWaits = n),
+    setHangWaits: (n: number) => (hangWaits = n),
   }
 }
 
@@ -86,7 +93,9 @@ describe("anchor-service", () => {
   let confirmed: Array<{ hash: string; txHash: string | null }>
   let clock: { now: number }
 
-  function makeService(opts: { maxAttempts?: number; batchWindowMs?: number } = {}) {
+  function makeService(
+    opts: { maxAttempts?: number; batchWindowMs?: number; expireWaits?: boolean } = {}
+  ) {
     return new AnchorService(
       db,
       fake.chain,
@@ -100,6 +109,11 @@ describe("anchor-service", () => {
         // по очереди вручную и не должны зависеть от таймингов
         batchWindowMs: opts.batchWindowMs ?? 0,
         now: () => clock.now,
+        // Срок ожидания «истекает» мгновенно, если тест этого просит, —
+        // без настоящих таймеров
+        withTimeout: opts.expireWaits
+          ? (p) => Promise.race([p, Promise.reject(new Error("timeout"))])
+          : (p) => p,
       }
     )
   }
@@ -565,6 +579,73 @@ describe("anchor-service", () => {
     expect(db.getAnchorBatch(lost.root, null)?.registry).toBeNull()
     expect(db.getAnchorByHash(H(5))!.registry).toBe(LOCAL)
     expect(fake.txCount()).toBe(0)
+  })
+
+  it("таймаут подтверждения: зависшая транзакция не блокирует очередь", async () => {
+    fake.setHangWaits(1)
+    const service = makeService({ expireWaits: true })
+    service.enqueue(H(1))
+
+    // Без таймаута processNext не вернулся бы никогда
+    expect(await service.processNext()).toBe("processed")
+
+    const item = db.getAnchorByHash(H(1))!
+    expect(item.status).toBe("pending")
+    expect(item.attempts).toBe(1)
+    expect(item.last_error).toContain("timeout")
+  })
+
+  it("пакет: транзакция пропала — уходит та же эпоха, новички ждут следующего прохода", async () => {
+    fake.setFailWaits(1) // ожидание оборвалось, транзакция в блок не попала
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+    await service.processNext()
+    expect(fake.anchoredRoots).toHaveLength(1)
+
+    // Пока пакет ждал повтора, пришли новые документы
+    service.enqueue(H(3))
+    service.enqueue(H(4))
+
+    clock.now += 10_000
+    await service.processNext()
+
+    // Переотправлена ровно прежняя голова, а не голова, связанная сама с собой
+    expect(fake.anchoredRoots).toHaveLength(2)
+    expect(fake.anchoredRoots[1].root).toBe(fake.anchoredRoots[0].root)
+    expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
+    expect(db.getAnchorByHash(H(3))!.status).toBe("pending")
+
+    await service.processNext()
+    expect(db.getAnchorByHash(H(3))!.status).toBe("confirmed")
+
+    // Цепь непрерывна, и каждое её звено действительно лежит в реестре
+    const links = db.getChainLinks(LOCAL)
+    expect(links).toHaveLength(2)
+    expect(verifyChain(links).ok).toBe(true)
+    for (const link of links) expect(fake.onChain.has(link.chainRoot)).toBe(true)
+  })
+
+  it("пакет: повторная отправка, которую реестр отверг, не теряет состав пакета", async () => {
+    fake.setFailWaits(1)
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+    await service.processNext()
+
+    // Вторая отправка падает (например, estimateGas: первая транзакция
+    // успела в блок и голова уже занята) — пакет не должен откатиться
+    fake.setFailSends(1)
+    clock.now += 10_000
+    await service.processNext()
+    expect(db.getAnchorBatchesForHash(H(1))).toHaveLength(1)
+
+    // Первая транзакция всё-таки в блоке — следующий проход это увидит
+    fake.onChain.add(fake.anchoredRoots[0].root)
+    clock.now += 10_000
+    await service.processNext()
+    expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
+    expect(fake.anchoredRoots).toHaveLength(1)
   })
 
   it("recovery при недоступном узле не роняет сервис и не трогает записи", async () => {

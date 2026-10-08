@@ -49,8 +49,35 @@ export type AnchorServiceOptions = {
   batchWindowMs?: number
   /** Потолок ожидания для самой старой записи, мс (по умолчанию 60000). */
   batchMaxWaitMs?: number
+  /**
+   * Сколько ждать подтверждения отправленной транзакции, мс (по умолчанию
+   * 10 минут). Воркер последовательный: зависшая в настоящей сети транзакция
+   * без этого блокировала бы всю очередь до перезапуска приложения.
+   */
+  confirmTimeoutMs?: number
   /** Часы — подменяются в тестах. */
   now?: () => number
+  /** Ограничение ожидания по времени — подменяется в тестах, где таймеров нет. */
+  withTimeout?: <T>(promise: Promise<T>, ms: number) => Promise<T>
+}
+
+function withRealTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`подтверждение не пришло за ${Math.round(ms / 1000)} с`)),
+      ms
+    )
+    promise.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      }
+    )
+  })
 }
 
 export type ProcessResult = "processed" | "waiting" | "empty"
@@ -71,7 +98,9 @@ export class AnchorService {
   private readonly maxBatchSize: number
   private readonly batchWindowMs: number
   private readonly batchMaxWaitMs: number
+  private readonly confirmTimeoutMs: number
   private readonly now: () => number
+  private readonly withTimeout: <T>(promise: Promise<T>, ms: number) => Promise<T>
 
   private running = false
   private wake: (() => void) | null = null
@@ -92,7 +121,9 @@ export class AnchorService {
     this.maxBatchSize = options.maxBatchSize ?? 256
     this.batchWindowMs = options.batchWindowMs ?? 15_000
     this.batchMaxWaitMs = options.batchMaxWaitMs ?? 60_000
+    this.confirmTimeoutMs = options.confirmTimeoutMs ?? 10 * 60_000
     this.now = options.now ?? Date.now
+    this.withTimeout = options.withTimeout ?? withRealTimeout
   }
 
   /**
@@ -249,13 +280,49 @@ export class AnchorService {
       }
     }
 
-    if (remaining.length === 1) {
+    if (remaining.length === 0) return "processed"
+
+    // Пакет, отправленный раньше и не дошедший до блока, переотправляется
+    // ровно в прежнем составе: тогда и связка эпохи прежняя. Новые записи
+    // подождут следующего прохода — иначе корень изменится, и в цепи
+    // останется звено, которое никогда не попало в реестр.
+    let inflight: AnchorQueueItem[] | null
+    try {
+      inflight = await this.inflightGroup(remaining)
+    } catch (e) {
+      for (const item of remaining) this.rescheduleAfterError(item, e)
+      return "processed"
+    }
+
+    if (inflight) {
+      await this.processBatch(inflight)
+    } else if (remaining.length === 1) {
       await this.processSingle(remaining[0])
-    } else if (remaining.length > 1) {
+    } else {
       await this.processBatch(remaining)
     }
 
     return "processed"
+  }
+
+  /**
+   * Записи пакета, транзакция которого уже уходила, но подтверждения не
+   * дождалась (обрыв или таймаут). null — таких нет или состав неполон
+   * (часть записей окончательно провалена): тогда собирается новый пакет.
+   */
+  private async inflightGroup(remaining: AnchorQueueItem[]): Promise<AnchorQueueItem[] | null> {
+    const registry = await this.chain.registry(remaining[0].rpc_url ?? undefined)
+    const byHash = new Map(remaining.map((i) => [i.hash, i]))
+
+    for (const item of remaining) {
+      const sent = this.db
+        .getAnchorBatchesForHash(item.hash, registry)
+        .find((b) => b.registry === registry && b.tx_hash !== null && b.chain_root !== null)
+      if (sent && sent.members.every((h) => byHash.has(h))) {
+        return sent.members.map((h) => byHash.get(h)!)
+      }
+    }
+    return null
   }
 
   /**
@@ -307,7 +374,7 @@ export class AnchorService {
       this.db.markAnchorSent(item.id, txHash, registry)
       this.emit({ type: "sent", item: this.db.getAnchorByHash(item.hash)! })
 
-      await wait()
+      await this.withTimeout(wait(), this.confirmTimeoutMs)
 
       this.db.markAnchorConfirmed(item.id, txHash, registry)
       this.onConfirmed(item.hash, txHash)
@@ -331,9 +398,13 @@ export class AnchorService {
 
     // Эпоха связывается с предыдущей эпохой того же реестра: on-chain уходит
     // голова цепи, а не голый корень пакета. Так изъятие эпохи из середины
-    // истории становится видимым.
-    const prevChainRoot = this.db.getChainHead(registry) ?? genesisRoot()
-    const head = chainRoot(prevChainRoot, tree.root)
+    // истории становится видимым. Повторная отправка того же состава берёт
+    // прежнюю связку: голова цепи сейчас — это она сама, и связать эпоху
+    // с собой значило бы заякорить не то значение, что записано в базе.
+    const previous = this.db.getAnchorBatch(tree.root, registry)
+    const prevChainRoot =
+      previous?.prev_chain_root ?? this.db.getChainHead(registry) ?? genesisRoot()
+    const head = previous?.chain_root ?? chainRoot(prevChainRoot, tree.root)
 
     // Состав пакета и связка фиксируются до отправки: если приложение упадёт
     // после сабмита транзакции, recovery восстановит связь hash → root → голова
@@ -358,8 +429,10 @@ export class AnchorService {
       txHash = sent.txHash
       wait = sent.wait
     } catch (e) {
-      // Транзакция не ушла — пакет откатывается, записи ждут следующей попытки
-      this.db.deleteAnchorBatch(tree.root, registry)
+      // Транзакция не ушла — новый пакет откатывается, записи ждут следующей
+      // попытки. Пакет, чья транзакция уже уходила раньше, остаётся: она ещё
+      // может оказаться в блоке, и тогда recovery найдёт его голову
+      if (!previous?.tx_hash) this.db.deleteAnchorBatch(tree.root, registry)
       for (const item of items) this.rescheduleAfterError(item, e)
       return
     }
@@ -371,10 +444,12 @@ export class AnchorService {
     }
 
     try {
-      await wait()
+      await this.withTimeout(wait(), this.confirmTimeoutMs)
     } catch (e) {
-      // Транзакция ушла, но подтверждение оборвалось: состав пакета сохранён,
-      // следующая попытка (или recovery) увидит root on-chain и подтвердит
+      // Транзакция ушла, но подтверждение оборвалось или не пришло вовремя:
+      // состав пакета сохранён, следующая попытка (или recovery) увидит
+      // голову on-chain и подтвердит, а если транзакция пропала — отправит
+      // тот же пакет заново
       for (const item of items) this.rescheduleAfterError(item, e)
       return
     }
