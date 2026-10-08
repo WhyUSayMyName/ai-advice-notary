@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import path from "node:path"
 import { buildEvidenceBundle } from "../evidence-core"
 import type { ArtifactRecord } from "../database-core"
 
@@ -10,7 +11,9 @@ function rec(partial: Partial<ArtifactRecord>): ArtifactRecord {
     id: nextId++,
     artifact_id: "art-1",
     display_name: "Doc",
-    file_path: "C:\\docs\\report.pdf",
+    // Путь в формате текущей ОС: имя файла берёт path.basename, а он
+    // на Linux не считает обратную косую разделителем
+    file_path: path.join("docs", "report.pdf"),
     hash: H(1),
     version: 1,
     previous_hash: null,
