@@ -77,7 +77,10 @@ export type SidebarProps = {
   netStatus: string
   chainId: number | null
   blockNumber: number | null
+  /** Пусто — узел из настроек приложения */
   rpcUrl: string
+  /** Хост узла из настроек — подсказка в пустом поле, без ключа провайдера */
+  defaultRpcHost: string | null
   onRpcUrl: (v: string) => void
   onConnect: () => void
   documentEnabled: boolean
@@ -98,6 +101,7 @@ export function Sidebar({
   chainId,
   blockNumber,
   rpcUrl,
+  defaultRpcHost,
   onRpcUrl,
   onConnect,
   documentEnabled,
@@ -195,6 +199,7 @@ export function Sidebar({
         <input
           value={rpcUrl}
           onChange={(e) => onRpcUrl(e.target.value)}
+          placeholder={defaultRpcHost ? `из настроек: ${defaultRpcHost}` : "адрес RPC-узла"}
           spellCheck={false}
           aria-label="Адрес RPC-узла"
           className="mono w-full rounded-[var(--radius-s)] border border-line bg-panel2 px-2 py-1.5 text-ink outline-none focus:border-accent"

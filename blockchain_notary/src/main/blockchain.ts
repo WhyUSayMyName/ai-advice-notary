@@ -20,11 +20,18 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   })
 }
 
-export async function connectRpc(rpcUrl: string) {
+export async function connectRpc(rpcUrl?: string) {
+  // Пустой адрес — узел из настроек. Интерфейсу полный адрес знать незачем:
+  // у Alchemy и Infura в нём лежит ключ провайдера
+  const url = rpcUrl?.trim() || process.env.RPC_URL
+  if (!url) {
+    throw new Error("Узел не задан: укажите адрес в поле «Сеть» или RPC_URL в .env")
+  }
+
   // Предыдущую пробу закрываем: брошенный провайдер продолжает
   // переподключаться к узлу и засоряет лог до конца сессии
   probe?.destroy()
-  probe = new JsonRpcProvider(rpcUrl)
+  probe = new JsonRpcProvider(url)
 
   try {
     // Если узел не отвечает, без таймаута ожидание висело бы вечно

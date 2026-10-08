@@ -22,7 +22,6 @@ const base: CertificateData = {
   filePath: "D:\\Проекты\\Разрез Северный\\Паспорт БВР 2026-09 ревизия 4.pdf",
   hashHex: "0x3f1a9c47b2e05d8814aa6f30c9e27b41d5680af3927cc1be4a05d73e8b16c2d9",
   chainId: 11155111,
-  rpcUrl: "https://sepolia.example/v3/xxxx",
   notaryAddress: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
   author: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
   timestamp: 1756900000,

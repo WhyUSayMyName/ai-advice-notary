@@ -16,6 +16,7 @@ import {
 import { getKeyStore } from "../src/main/key-store"
 import { generateCertificatePdf } from "../src/main/certificate"
 import { exportEvidenceBundle } from "../src/main/evidence"
+import { rpcHint } from "../src/main/evidence-core"
 import {
   anchorBatchForHash,
   onAnchorEvent,
@@ -39,7 +40,11 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 let win: BrowserWindow | null = null
 let splash: BrowserWindow | null = null
 
-ipcMain.handle("rpc:connect", async (_e, rpcUrl: string) => {
+// Какой узел работает, когда поле «Сеть» пустое. Наружу — только схема
+// и хост: полный адрес с ключом провайдера в renderer не уходит
+ipcMain.handle("rpc:default", async () => ({ ok: true, host: rpcHint(process.env.RPC_URL) }))
+
+ipcMain.handle("rpc:connect", async (_e, rpcUrl?: string) => {
   try {
     const data = await connectRpc(rpcUrl)
     return { ok: true, ...data }
@@ -129,7 +134,7 @@ ipcMain.handle(
     payload: {
       filePath: string
       hashHex: string
-      rpcUrl: string
+      rpcUrl?: string
       author: string
       timestamp: number
       txHash: string
@@ -155,7 +160,6 @@ ipcMain.handle(
         filePath: payload.filePath,
         hashHex: payload.hashHex,
         chainId,
-        rpcUrl: payload.rpcUrl,
         notaryAddress,
         author: payload.author,
         timestamp: payload.timestamp,

@@ -126,12 +126,16 @@ type AnchorUpdateEvent = {
       }>
 
       // rpc
-      connectRpc: (url: string) => Promise<{
+      /** Без адреса — узел из настроек (RPC_URL в .env приложения). */
+      connectRpc: (url?: string) => Promise<{
         ok: boolean
         chainId?: number
         blockNumber?: number
         error?: string
       }>
+
+      /** Узел по умолчанию — только схема и хост, без ключа провайдера. */
+      defaultRpc: () => Promise<{ ok: boolean; host: string | null }>
 
       // files
       pickAndHash: () => Promise<{
@@ -313,7 +317,7 @@ type AnchorUpdateEvent = {
       saveCertificatePdf: (payload: {
         filePath: string
         hashHex: string
-        rpcUrl: string
+        rpcUrl?: string
         author: string
         timestamp: number
         txHash: string

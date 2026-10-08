@@ -19,7 +19,6 @@ export type CertificateData = {
   filePath: string
   hashHex: string
   chainId: number
-  rpcUrl: string
   notaryAddress: string
   author: string
   timestamp: number // unix seconds

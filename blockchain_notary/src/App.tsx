@@ -10,12 +10,28 @@ import { QueueScreen } from "./screens/QueueScreen"
 import { EpochsScreen } from "./screens/EpochsScreen"
 import { EvidenceScreen } from "./screens/EvidenceScreen"
 
+/** Пустое поле «Сеть» — узел из настроек main-процесса. */
+const nodeOf = (url: string) => url.trim() || undefined
+
+/** В журнал — только хост: в адресе узла бывает ключ провайдера. */
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>("registry")
   const [theme, setTheme] = useState<"dark" | "light">("dark")
   const [logsOpen, setLogsOpen] = useState(false)
 
-  const [rpcUrl, setRpcUrl] = useState("http://127.0.0.1:8545")
+  // Пусто — работает узел из настроек приложения (RPC_URL в .env). Раньше здесь
+  // стоял локальный адрес, и он перебивал настройки: в настоящей сети пришлось
+  // бы при каждом запуске вписывать полный адрес провайдера вместе с ключом
+  const [rpcUrl, setRpcUrl] = useState("")
+  const [defaultHost, setDefaultHost] = useState<string | null>(null)
   // Аудит и эпохи сверяются с реестром узла из поля «Сеть». Через ref, чтобы
   // загрузчики не пересоздавались — и не перезапускались — на каждый символ
   const rpcUrlRef = useRef(rpcUrl)
@@ -51,6 +67,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    void window.api.defaultRpc().then((r) => setDefaultHost(r.host))
+  }, [])
 
 
   // Подтверждение копирования само исчезает — модальность здесь была бы наказанием
@@ -120,7 +140,7 @@ export default function App() {
   }, [])
 
   const runAudit = useCallback(async () => {
-    const res = await window.api.auditArtifacts(rpcUrlRef.current)
+    const res = await window.api.auditArtifacts(nodeOf(rpcUrlRef.current))
     if (!res.ok) {
       log(`Ошибка аудита: ${res.error}`)
       return
@@ -159,7 +179,7 @@ export default function App() {
   }, [loadQueue])
 
   const loadBatches = useCallback(async () => {
-    const res = await window.api.listAnchorBatches(rpcUrlRef.current)
+    const res = await window.api.listAnchorBatches(nodeOf(rpcUrlRef.current))
     if (!res.ok) {
       log(`Ошибка загрузки эпох: ${res.error}`)
       return
@@ -250,10 +270,11 @@ export default function App() {
   ])
 
   const connect = async () => {
-    log(`Подключение к ${rpcUrl}`)
+    const target = nodeOf(rpcUrl)
+    log(`Подключение к ${target ? hostOf(target) : `${defaultHost ?? "узлу"} (из настроек)`}`)
     setNetStatus("Подключение…")
 
-    const res = await window.api.connectRpc(rpcUrl)
+    const res = await window.api.connectRpc(target)
     if (res.ok) {
       setChainId(res.chainId ?? null)
       setBlockNumber(res.blockNumber ?? null)
@@ -271,7 +292,7 @@ export default function App() {
   const checkHash = async (currentHash: string) => {
     if (!(currentHash.startsWith("0x") && currentHash.length === 66)) return
 
-    const r = await window.api.notaryIsNotarized(currentHash, rpcUrl)
+    const r = await window.api.notaryIsNotarized(currentHash, nodeOf(rpcUrl))
     if (!r.ok) {
       log(`Ошибка проверки: ${r.error}`)
       return
@@ -282,7 +303,7 @@ export default function App() {
     log(isN ? `Хеш ${short(currentHash)} найден в реестре` : `Хеш ${short(currentHash)} не заякорен`)
 
     if (isN) {
-      const rr = await window.api.notaryGetRecord(currentHash, rpcUrl)
+      const rr = await window.api.notaryGetRecord(currentHash, nodeOf(rpcUrl))
       if (rr.ok && rr.exists) {
         setRecord({ author: rr.author ?? "", timestamp: rr.timestamp ?? 0 })
       }
@@ -456,7 +477,7 @@ export default function App() {
     const res = await window.api.saveCertificatePdf({
       filePath,
       hashHex,
-      rpcUrl,
+      rpcUrl: nodeOf(rpcUrl),
       author: record.author,
       timestamp: record.timestamp,
       txHash,
@@ -469,7 +490,7 @@ export default function App() {
 
   const exportEvidence = async () => {
     log("Экспорт пакета доказательств…")
-    const res = await window.api.exportEvidence(rpcUrl)
+    const res = await window.api.exportEvidence(nodeOf(rpcUrl))
 
     if (res.ok) {
       log(`Пакет сохранён: ${res.filePath} (записей: ${res.artifacts})`)
@@ -656,6 +677,7 @@ export default function App() {
         chainId={chainId}
         blockNumber={blockNumber}
         rpcUrl={rpcUrl}
+        defaultRpcHost={defaultHost}
         onRpcUrl={setRpcUrl}
         onConnect={connect}
         documentEnabled={Boolean(selectedArtifact)}

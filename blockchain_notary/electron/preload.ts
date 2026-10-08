@@ -5,7 +5,8 @@ contextBridge.exposeInMainWorld("api", {
   ping: () => ipcRenderer.invoke("app:ping"),
 
   // rpc
-  connectRpc: (url: string) => ipcRenderer.invoke("rpc:connect", url),
+  connectRpc: (url?: string) => ipcRenderer.invoke("rpc:connect", url),
+  defaultRpc: () => ipcRenderer.invoke("rpc:default"),
 
   // files
   pickAndHash: () => ipcRenderer.invoke("file:pickAndHash"),
