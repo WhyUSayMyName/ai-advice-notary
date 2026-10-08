@@ -7,6 +7,9 @@
   "bin": {
     "notary-verify": "./verify.mjs"
   },
+  "scripts": {
+    "test": "node --test"
+  },
   "engines": {
     "node": ">=18.17"
   },
