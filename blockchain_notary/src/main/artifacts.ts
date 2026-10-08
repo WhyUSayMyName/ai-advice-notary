@@ -12,6 +12,7 @@ import {
 import {
   notaryGetRecord,
   notaryIsNotarized,
+  notaryRegistry,
 } from "./notary"
 import { getAnchorService } from "./anchor"
 
@@ -80,8 +81,9 @@ export async function notarizeArtifact(filePath: string, displayName?: string, r
   }
 
   // Фиксация асинхронная: хеш уходит в очередь anchor-сервиса,
-  // подтверждение придёт событием anchor:updated
-  const queueItem = getAnchorService().enqueue(hash, rpcUrl)
+  // подтверждение придёт событием anchor:updated. Реестр передаётся, чтобы
+  // документ, заякоренный в другой сети, был заякорен и в текущей
+  const queueItem = getAnchorService().enqueue(hash, rpcUrl, await notaryRegistry(rpcUrl))
 
   return {
     hash,
@@ -116,7 +118,7 @@ export async function notarizeArtifactVersion(
     }
   }
 
-  const queueItem = getAnchorService().enqueue(hash, rpcUrl)
+  const queueItem = getAnchorService().enqueue(hash, rpcUrl, await notaryRegistry(rpcUrl))
 
   return {
     hash,
@@ -130,7 +132,8 @@ export async function notarizeArtifactVersion(
 
 /**
  * Ищет on-chain запись для хеша: сначала прямую (одиночная фиксация),
- * затем через корни merkle-пакетов, в которые хеш входил.
+ * затем через корни merkle-пакетов, в которые хеш входил. Пакеты других
+ * реестров не перебираются — в этой сети их заведомо нет.
  */
 export async function resolveAnchoredRecord(hash: string, rpcUrl?: string) {
   const direct = await notaryGetRecord(hash, rpcUrl)
@@ -138,7 +141,8 @@ export async function resolveAnchoredRecord(hash: string, rpcUrl?: string) {
     return { ...direct, via: "direct" as const, root: null as string | null }
   }
 
-  for (const batch of getDatabase().getAnchorBatchesForHash(hash)) {
+  const registry = await notaryRegistry(rpcUrl)
+  for (const batch of getDatabase().getAnchorBatchesForHash(hash, registry)) {
     // Связанные эпохи заякорены головой цепи; у пакетов, созданных до
     // появления связывания, on-chain лежит голый корень
     const anchored = batch.chain_root ?? batch.root

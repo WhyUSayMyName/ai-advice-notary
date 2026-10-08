@@ -35,6 +35,11 @@ export type AnchorStatus = "pending" | "sent" | "confirmed" | "failed"
 
 export type AnchorBatch = {
   root: string
+  /**
+   * Реестр, в котором заякорен пакет (см. registry-core.ts); null — пакет
+   * создан до учёта реестров, и где он лежит, база не знает.
+   */
+  registry: string | null
   tx_hash: string | null
   leaf_count: number
   created_at: number
@@ -53,6 +58,8 @@ export type AnchorQueueItem = {
   id: number
   hash: string
   rpc_url: string | null
+  /** Реестр, в котором хеш заякорен; null — ещё не заякорен или запись старше учёта реестров. */
+  registry: string | null
   status: AnchorStatus
   attempts: number
   next_attempt_at: number
@@ -161,7 +168,11 @@ function migrate(db: Database.Database) {
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS anchor_batches (
-      root TEXT PRIMARY KEY,
+      root TEXT NOT NULL,
+      -- Реестр (chainId + адрес контракта), где заякорен пакет; '' — пакет
+      -- создан до учёта реестров. Пустая строка, а не NULL: колонка входит
+      -- в первичный ключ, а NULL в нём уникальность не обеспечивает.
+      registry TEXT NOT NULL DEFAULT '',
       tx_hash TEXT,
       leaf_count INTEGER NOT NULL,
       created_at INTEGER NOT NULL,
@@ -170,7 +181,10 @@ function migrate(db: Database.Database) {
       -- NULL у пакетов, созданных до появления связывания: они заякорены
       -- голым корнем и продолжают проверяться прежним способом.
       prev_chain_root TEXT,
-      chain_root TEXT
+      chain_root TEXT,
+      -- Тот же состав документов может быть заякорен в нескольких реестрах:
+      -- корень совпадёт, а связка эпох у каждого реестра своя
+      PRIMARY KEY (root, registry)
     );
 
     CREATE TABLE IF NOT EXISTS anchor_batch_members (
@@ -186,6 +200,11 @@ function migrate(db: Database.Database) {
   // и CREATE TABLE IF NOT EXISTS колонок не добавит
   ensureColumn(db, "anchor_batches", "prev_chain_root", "TEXT")
   ensureColumn(db, "anchor_batches", "chain_root", "TEXT")
+  migrateBatchesToRegistry(db)
+
+  // Реестр записи очереди проставляется воркером при фиксации;
+  // у записей, подтверждённых до учёта реестров, он остаётся NULL
+  ensureColumn(db, "anchor_queue", "registry", "TEXT")
 
   db.exec(`
     UPDATE artifacts
@@ -193,6 +212,55 @@ function migrate(db: Database.Database) {
     WHERE display_name = '' OR display_name IS NULL
   `)
 }
+
+/**
+ * Учёт реестров. Раньше база не знала, в какой сети и каком контракте
+ * заякорен пакет: после переключения на другую сеть аудит не нашёл бы там
+ * ни одного прежнего документа и показал бы это как «нет в реестре» —
+ * неотличимо от подмены. Первичный ключ становится (root, registry):
+ * один и тот же состав можно заякорить в разных реестрах, а SQLite ключ
+ * на месте не меняет, поэтому таблица пересоздаётся. Старые пакеты
+ * получают пустой реестр; при запуске воркер находит их on-chain и
+ * проставляет реестр (AnchorService.recover).
+ */
+function migrateBatchesToRegistry(db: Database.Database) {
+  const columns = db.prepare(`PRAGMA table_info(anchor_batches)`).all() as Array<{ name: string }>
+  if (columns.some((c) => c.name === "registry")) return
+
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE anchor_batches_migrated (
+        root TEXT NOT NULL,
+        registry TEXT NOT NULL DEFAULT '',
+        tx_hash TEXT,
+        leaf_count INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        prev_chain_root TEXT,
+        chain_root TEXT,
+        PRIMARY KEY (root, registry)
+      );
+
+      -- Порядок вставки сохраняет rowid-порядок: по нему разрешается
+      -- очерёдность эпох с одинаковым created_at
+      INSERT INTO anchor_batches_migrated
+        (root, registry, tx_hash, leaf_count, created_at, prev_chain_root, chain_root)
+      SELECT root, '', tx_hash, leaf_count, created_at, prev_chain_root, chain_root
+      FROM anchor_batches
+      ORDER BY rowid;
+
+      DROP TABLE anchor_batches;
+      ALTER TABLE anchor_batches_migrated RENAME TO anchor_batches;
+    `)
+  })()
+}
+
+/** В таблице пакетов неизвестный реестр — пустая строка (она входит в ключ). */
+const regKey = (registry?: string | null) => registry ?? ""
+
+const BATCH_COLUMNS = `
+  root, NULLIF(registry, '') AS registry, tx_hash, leaf_count, created_at,
+  prev_chain_root, chain_root
+`
 
 export function createDatabase(dbPath: string) {
   const db = new Database(dbPath)
@@ -365,24 +433,39 @@ export function createDatabase(dbPath: string) {
    * Ставит хеш в очередь фиксации. Один хеш — одна запись:
    * повторная постановка возвращает существующую, а окончательно
    * проваленная (failed) реактивируется для новой серии попыток.
-   */
-  /**
+   *
    * @param at момент поступления. Передаётся сервисом, потому что окно
    *   накопления пакета сравнивает created_at с его собственными часами —
    *   два источника времени в одном расчёте дают неверный результат.
+   * @param registry реестр, в котором хеш нужно заякорить. Если запись
+   *   подтверждена в другом реестре (или до учёта реестров), она
+   *   реактивируется: иначе после переключения сети документ навсегда
+   *   числился бы «заякоренным», не будучи в текущем реестре. Повторной
+   *   транзакции это не означает — воркер перед отправкой проверяет чейн.
    */
-  function enqueueAnchor(hash: string, rpcUrl?: string, at?: number): AnchorQueueItem {
+  function enqueueAnchor(
+    hash: string,
+    rpcUrl?: string,
+    at?: number,
+    registry?: string
+  ): AnchorQueueItem {
     const now = at ?? Date.now()
     const existing = getAnchorByHash(hash)
 
     if (existing) {
-      if (existing.status === "failed") {
+      const anchoredElsewhere =
+        registry !== undefined && existing.status === "confirmed" && existing.registry !== registry
+
+      if (existing.status === "failed" || anchoredElsewhere) {
         db.prepare(`
           UPDATE anchor_queue
           SET status = 'pending', attempts = 0, next_attempt_at = 0,
-              last_error = NULL, created_at = ?, updated_at = ?
+              last_error = NULL, created_at = ?, updated_at = ?,
+              rpc_url = COALESCE(?, rpc_url),
+              tx_hash = CASE WHEN status = 'confirmed' THEN NULL ELSE tx_hash END,
+              registry = CASE WHEN status = 'confirmed' THEN NULL ELSE registry END
           WHERE id = ?
-        `).run(now, now, existing.id)
+        `).run(now, now, rpcUrl ?? null, existing.id)
         return getAnchorByHash(hash)!
       }
       return existing
@@ -432,18 +515,32 @@ export function createDatabase(dbPath: string) {
       .all() as AnchorQueueItem[]
   }
 
-  function markAnchorSent(id: number, txHash: string) {
-    db.prepare(`
-      UPDATE anchor_queue SET status = 'sent', tx_hash = ?, updated_at = ? WHERE id = ?
-    `).run(txHash, Date.now(), id)
-  }
-
-  function markAnchorConfirmed(id: number, txHash?: string | null) {
+  function markAnchorSent(id: number, txHash: string, registry?: string) {
     db.prepare(`
       UPDATE anchor_queue
-      SET status = 'confirmed', tx_hash = COALESCE(?, tx_hash), last_error = NULL, updated_at = ?
+      SET status = 'sent', tx_hash = ?, registry = COALESCE(?, registry), updated_at = ?
       WHERE id = ?
-    `).run(txHash ?? null, Date.now(), id)
+    `).run(txHash, registry ?? null, Date.now(), id)
+  }
+
+  function markAnchorConfirmed(id: number, txHash?: string | null, registry?: string) {
+    db.prepare(`
+      UPDATE anchor_queue
+      SET status = 'confirmed', tx_hash = COALESCE(?, tx_hash),
+          registry = COALESCE(?, registry), last_error = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(txHash ?? null, registry ?? null, Date.now(), id)
+  }
+
+  /** Подтверждённые записи без реестра — заякорены до учёта реестров. */
+  function getUnassignedConfirmedAnchors(): AnchorQueueItem[] {
+    return db
+      .prepare(`SELECT * FROM anchor_queue WHERE status = 'confirmed' AND registry IS NULL ORDER BY id`)
+      .all() as AnchorQueueItem[]
+  }
+
+  function setAnchorRegistry(id: number, registry: string) {
+    db.prepare(`UPDATE anchor_queue SET registry = ? WHERE id = ?`).run(registry, id)
   }
 
   /** Неудачная попытка: вернуть в pending с новым сроком. */
@@ -466,10 +563,10 @@ export function createDatabase(dbPath: string) {
 
   // ---------- Пакеты фиксации (merkle batches) ----------
 
-  function batchRow(root: string): AnchorBatch | undefined {
+  function batchRow(root: string, registry?: string | null): AnchorBatch | undefined {
     const row = db
-      .prepare(`SELECT * FROM anchor_batches WHERE root = ?`)
-      .get(root) as Omit<AnchorBatch, "members"> | undefined
+      .prepare(`SELECT ${BATCH_COLUMNS} FROM anchor_batches WHERE root = ? AND registry = ?`)
+      .get(root, regKey(registry)) as Omit<AnchorBatch, "members"> | undefined
     if (!row) return undefined
 
     const members = (
@@ -482,17 +579,23 @@ export function createDatabase(dbPath: string) {
   /**
    * Регистрирует состав пакета до отправки транзакции (нужен для recovery).
    * link — связка с предыдущей эпохой; отсутствует только у пакетов,
-   * созданных до появления связывания.
+   * созданных до появления связывания. registry — реестр, куда пакет уходит.
    */
   const createAnchorBatch = db.transaction(
-    (root: string, hashes: string[], link?: { prevChainRoot: string; chainRoot: string }) => {
+    (
+      root: string,
+      hashes: string[],
+      link?: { prevChainRoot: string; chainRoot: string },
+      registry?: string
+    ) => {
       db.prepare(`
         INSERT INTO anchor_batches
-          (root, tx_hash, leaf_count, created_at, prev_chain_root, chain_root)
-        VALUES (?, NULL, ?, ?, ?, ?)
-        ON CONFLICT(root) DO NOTHING
+          (root, registry, tx_hash, leaf_count, created_at, prev_chain_root, chain_root)
+        VALUES (?, ?, NULL, ?, ?, ?, ?)
+        ON CONFLICT(root, registry) DO NOTHING
       `).run(
         root,
+        regKey(registry),
         hashes.length,
         Date.now(),
         link?.prevChainRoot ?? null,
@@ -507,79 +610,152 @@ export function createDatabase(dbPath: string) {
   )
 
   /**
-   * Голова цепи — chain_root последней связанной эпохи.
+   * Голова цепи реестра — chain_root его последней связанной эпохи.
    * undefined, если связанных эпох ещё нет: значит цепь начинается с генезиса.
+   * У каждого реестра цепь своя: звено, заякоренное в другой сети, аудитор
+   * этого реестра проверить не может, и связка с ним была бы разрывом.
    */
-  function getChainHead(): string | undefined {
+  function getChainHead(registry?: string): string | undefined {
     const row = db
       .prepare(`
         SELECT chain_root
         FROM anchor_batches
-        WHERE chain_root IS NOT NULL
+        WHERE chain_root IS NOT NULL AND registry = ?
         ORDER BY created_at DESC, rowid DESC
         LIMIT 1
       `)
-      .get() as { chain_root: string } | undefined
+      .get(regKey(registry)) as { chain_root: string } | undefined
 
     return row?.chain_root
   }
 
-  /** Звенья цепи в хронологическом порядке — для проверки непрерывности. */
-  function getChainLinks(): Array<{ prev: string; batchRoot: string; chainRoot: string }> {
+  /** Звенья цепи реестра в хронологическом порядке — для проверки непрерывности. */
+  function getChainLinks(
+    registry?: string
+  ): Array<{ prev: string; batchRoot: string; chainRoot: string }> {
     return (
       db
         .prepare(`
           SELECT prev_chain_root, root, chain_root
           FROM anchor_batches
-          WHERE chain_root IS NOT NULL
+          WHERE chain_root IS NOT NULL AND registry = ?
           ORDER BY created_at ASC, rowid ASC
         `)
-        .all() as Array<{ prev_chain_root: string; root: string; chain_root: string }>
+        .all(regKey(registry)) as Array<{ prev_chain_root: string; root: string; chain_root: string }>
     ).map((r) => ({ prev: r.prev_chain_root, batchRoot: r.root, chainRoot: r.chain_root }))
   }
 
-  function setAnchorBatchTx(root: string, txHash: string) {
-    db.prepare(`UPDATE anchor_batches SET tx_hash = ? WHERE root = ?`).run(txHash, root)
+  function setAnchorBatchTx(root: string, txHash: string, registry?: string) {
+    db.prepare(`UPDATE anchor_batches SET tx_hash = ? WHERE root = ? AND registry = ?`).run(
+      txHash,
+      root,
+      regKey(registry)
+    )
   }
 
   /** Откат пакета, отправка которого не состоялась. */
-  const deleteAnchorBatch = db.transaction((root: string) => {
-    db.prepare(`DELETE FROM anchor_batch_members WHERE root = ?`).run(root)
-    db.prepare(`DELETE FROM anchor_batches WHERE root = ?`).run(root)
+  const deleteAnchorBatch = db.transaction((root: string, registry?: string) => {
+    db.prepare(`DELETE FROM anchor_batches WHERE root = ? AND registry = ?`).run(
+      root,
+      regKey(registry)
+    )
+    // Состав общий для всех реестров с тем же корнем — удаляется последним
+    const stillUsed = db.prepare(`SELECT 1 FROM anchor_batches WHERE root = ?`).get(root)
+    if (!stillUsed) db.prepare(`DELETE FROM anchor_batch_members WHERE root = ?`).run(root)
   })
 
-  function getAnchorBatch(root: string): AnchorBatch | undefined {
-    return batchRow(root)
+  function getAnchorBatch(root: string, registry?: string | null): AnchorBatch | undefined {
+    return batchRow(root, registry)
+  }
+
+  /**
+   * Проставляет реестр пакету, созданному до учёта реестров. Если тот же
+   * корень в этом реестре уже записан, старая строка просто уходит.
+   */
+  const assignBatchRegistry = db.transaction((root: string, registry: string) => {
+    const taken = db
+      .prepare(`SELECT 1 FROM anchor_batches WHERE root = ? AND registry = ?`)
+      .get(root, registry)
+    if (taken) {
+      db.prepare(`DELETE FROM anchor_batches WHERE root = ? AND registry = ''`).run(root)
+    } else {
+      db.prepare(`UPDATE anchor_batches SET registry = ? WHERE root = ? AND registry = ''`).run(
+        registry,
+        root
+      )
+    }
+  })
+
+  /** Пакеты с транзакцией, но без реестра — кандидаты на сверку с чейном. */
+  function getUnassignedBatches(): AnchorBatchSummary[] {
+    return db
+      .prepare(`
+        SELECT ${BATCH_COLUMNS} FROM anchor_batches
+        WHERE registry = '' AND tx_hash IS NOT NULL
+        ORDER BY created_at ASC, rowid ASC
+      `)
+      .all() as AnchorBatchSummary[]
   }
 
   /**
    * Список пакетов, свежие первыми. Состав намеренно не загружается:
    * в пакете могут быть сотни хешей, а списку они не нужны.
+   * С registry — только пакеты этого реестра и пакеты без реестра.
    */
-  function listAnchorBatches(limit = 200): AnchorBatchSummary[] {
+  function listAnchorBatches(limit = 200, registry?: string): AnchorBatchSummary[] {
+    const scoped = registry !== undefined
     return db
       .prepare(`
-        SELECT root, tx_hash, leaf_count, created_at, prev_chain_root, chain_root
+        SELECT ${BATCH_COLUMNS}
         FROM anchor_batches
+        ${scoped ? "WHERE registry IN (?, '')" : ""}
         ORDER BY created_at DESC
         LIMIT ?
       `)
-      .all(limit) as AnchorBatchSummary[]
+      .all(...(scoped ? [registry, limit] : [limit])) as AnchorBatchSummary[]
   }
 
-  /** Все пакеты, содержащие данный файловый хеш (свежие первыми). */
-  function getAnchorBatchesForHash(hash: string): AnchorBatch[] {
-    const roots = db
+  /**
+   * Все пакеты, содержащие данный файловый хеш (свежие первыми).
+   * С registry — только этого реестра и пакеты без реестра: последние могут
+   * лежать где угодно, их проверяет чейн, а не база.
+   */
+  function getAnchorBatchesForHash(hash: string, registry?: string): AnchorBatch[] {
+    const scoped = registry !== undefined
+    const rows = db
       .prepare(`
-        SELECT m.root
+        SELECT b.root, b.registry
         FROM anchor_batch_members m
         JOIN anchor_batches b ON b.root = m.root
-        WHERE m.hash = ?
-        ORDER BY b.created_at DESC
+        WHERE m.hash = ? ${scoped ? "AND b.registry IN (?, '')" : ""}
+        ORDER BY b.created_at DESC, b.rowid DESC
       `)
-      .all(hash) as Array<{ root: string }>
+      .all(...(scoped ? [hash, registry] : [hash])) as Array<{ root: string; registry: string }>
 
-    return roots.map((r) => batchRow(r.root)!).filter(Boolean)
+    return rows.map((r) => batchRow(r.root, r.registry)!).filter(Boolean)
+  }
+
+  /**
+   * Реестры, в которых хеш числится заякоренным по данным базы: пакеты
+   * с транзакцией и прямая фиксация из очереди. null в списке — фиксация
+   * до учёта реестров, где она лежит, неизвестно.
+   */
+  function getAnchorRegistriesForHash(hash: string): Array<string | null> {
+    const fromBatches = (
+      db
+        .prepare(`
+          SELECT DISTINCT NULLIF(b.registry, '') AS registry
+          FROM anchor_batch_members m
+          JOIN anchor_batches b ON b.root = m.root
+          WHERE m.hash = ? AND b.tx_hash IS NOT NULL
+        `)
+        .all(hash) as Array<{ registry: string | null }>
+    ).map((r) => r.registry)
+
+    const queued = getAnchorByHash(hash)
+    const fromQueue = queued?.status === "confirmed" ? [queued.registry] : []
+
+    return [...new Set([...fromBatches, ...fromQueue])]
   }
 
   return {
@@ -602,6 +778,8 @@ export function createDatabase(dbPath: string) {
     getUnconfirmedAnchors,
     markAnchorSent,
     markAnchorConfirmed,
+    getUnassignedConfirmedAnchors,
+    setAnchorRegistry,
     rescheduleAnchor,
     markAnchorFailed,
     createAnchorBatch,
@@ -609,6 +787,9 @@ export function createDatabase(dbPath: string) {
     deleteAnchorBatch,
     getAnchorBatch,
     getAnchorBatchesForHash,
+    getAnchorRegistriesForHash,
+    assignBatchRegistry,
+    getUnassignedBatches,
     listAnchorBatches,
     getChainHead,
     getChainLinks,

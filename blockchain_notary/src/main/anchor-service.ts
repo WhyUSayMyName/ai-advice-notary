@@ -8,6 +8,12 @@ import { chainRoot, genesisRoot } from "./chain-core"
  * от ожидания подтверждения (важно для восстановления после сбоя).
  */
 export type ChainAdapter = {
+  /**
+   * Идентификатор реестра (chainId + адрес контракта, см. registry-core.ts),
+   * куда уходят транзакции по этому адресу узла. Им помечается каждая
+   * фиксация, и по нему же разделяются цепи эпох разных сетей.
+   */
+  registry(rpcUrl?: string): Promise<string>
   isNotarized(hash: string, rpcUrl?: string): Promise<boolean>
   sendNotarize(
     hash: string,
@@ -43,8 +49,35 @@ export type AnchorServiceOptions = {
   batchWindowMs?: number
   /** Потолок ожидания для самой старой записи, мс (по умолчанию 60000). */
   batchMaxWaitMs?: number
+  /**
+   * Сколько ждать подтверждения отправленной транзакции, мс (по умолчанию
+   * 10 минут). Воркер последовательный: зависшая в настоящей сети транзакция
+   * без этого блокировала бы всю очередь до перезапуска приложения.
+   */
+  confirmTimeoutMs?: number
   /** Часы — подменяются в тестах. */
   now?: () => number
+  /** Ограничение ожидания по времени — подменяется в тестах, где таймеров нет. */
+  withTimeout?: <T>(promise: Promise<T>, ms: number) => Promise<T>
+}
+
+function withRealTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`подтверждение не пришло за ${Math.round(ms / 1000)} с`)),
+      ms
+    )
+    promise.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      }
+    )
+  })
 }
 
 export type ProcessResult = "processed" | "waiting" | "empty"
@@ -65,7 +98,9 @@ export class AnchorService {
   private readonly maxBatchSize: number
   private readonly batchWindowMs: number
   private readonly batchMaxWaitMs: number
+  private readonly confirmTimeoutMs: number
   private readonly now: () => number
+  private readonly withTimeout: <T>(promise: Promise<T>, ms: number) => Promise<T>
 
   private running = false
   private wake: (() => void) | null = null
@@ -86,12 +121,18 @@ export class AnchorService {
     this.maxBatchSize = options.maxBatchSize ?? 256
     this.batchWindowMs = options.batchWindowMs ?? 15_000
     this.batchMaxWaitMs = options.batchMaxWaitMs ?? 60_000
+    this.confirmTimeoutMs = options.confirmTimeoutMs ?? 10 * 60_000
     this.now = options.now ?? Date.now
+    this.withTimeout = options.withTimeout ?? withRealTimeout
   }
 
-  /** Ставит хеш в очередь и будит воркер. Мгновенно, без сети. */
-  enqueue(hash: string, rpcUrl?: string): AnchorQueueItem {
-    const item = this.db.enqueueAnchor(hash, rpcUrl, this.now())
+  /**
+   * Ставит хеш в очередь и будит воркер. Мгновенно, без сети.
+   * registry — реестр, в котором документ должен оказаться; если хеш
+   * заякорен в другом, запись реактивируется (см. enqueueAnchor).
+   */
+  enqueue(hash: string, rpcUrl?: string, registry?: string): AnchorQueueItem {
+    const item = this.db.enqueueAnchor(hash, rpcUrl, this.now(), registry)
     this.emit({ type: "queued", item })
     this.kick()
     return item
@@ -108,12 +149,14 @@ export class AnchorService {
     let confirmed = 0
     let requeued = 0
 
+    await this.adoptLegacyRegistries()
+
     for (const item of this.db.getUnconfirmedAnchors()) {
       try {
         const anchored = await this.findAnchoredEvidence(item)
 
         if (anchored) {
-          this.db.markAnchorConfirmed(item.id, anchored.txHash ?? item.tx_hash)
+          this.db.markAnchorConfirmed(item.id, anchored.txHash ?? item.tx_hash, anchored.registry)
           this.onConfirmed(item.hash, anchored.txHash ?? item.tx_hash)
           confirmed++
           this.emit({ type: "recovered", item: this.db.getAnchorByHash(item.hash)! })
@@ -131,24 +174,66 @@ export class AnchorService {
   }
 
   /**
-   * Проверяет, заякорен ли хеш on-chain: напрямую (одиночная фиксация)
-   * или через корень merkle-пакета, в который он входил.
+   * Записи, заякоренные до учёта реестров, не знают, где лежат. Узнать это
+   * можно только у чейна: что нашлось в реестре по умолчанию, получает его
+   * метку. Не найденное остаётся без метки — аудит покажет его как
+   * «реестр неизвестен», а не как подмену.
+   */
+  private async adoptLegacyRegistries() {
+    let registry: string
+    try {
+      registry = await this.chain.registry()
+    } catch {
+      return // Узел недоступен — сверка подождёт следующего запуска
+    }
+
+    for (const batch of this.db.getUnassignedBatches()) {
+      try {
+        if (await this.chain.isNotarized(batch.chain_root ?? batch.root)) {
+          this.db.assignBatchRegistry(batch.root, registry)
+        }
+      } catch {
+        return
+      }
+    }
+
+    for (const item of this.db.getUnassignedConfirmedAnchors()) {
+      try {
+        const viaBatch = this.db
+          .getAnchorBatchesForHash(item.hash, registry)
+          .some((b) => b.registry === registry && b.tx_hash !== null)
+        if (viaBatch || (await this.chain.isNotarized(item.hash))) {
+          this.db.setAnchorRegistry(item.id, registry)
+        }
+      } catch {
+        return
+      }
+    }
+  }
+
+  /**
+   * Проверяет, заякорен ли хеш on-chain в реестре записи: напрямую
+   * (одиночная фиксация) или через корень merkle-пакета, в который он входил.
    */
   private async findAnchoredEvidence(
     item: AnchorQueueItem
-  ): Promise<{ txHash: string | null } | null> {
+  ): Promise<{ txHash: string | null; registry: string } | null> {
     const rpcUrl = item.rpc_url ?? undefined
+    const registry = await this.chain.registry(rpcUrl)
 
     if (await this.chain.isNotarized(item.hash, rpcUrl)) {
-      return { txHash: item.tx_hash }
+      return { txHash: item.tx_hash, registry }
     }
 
-    for (const batch of this.db.getAnchorBatchesForHash(item.hash)) {
+    // Пакеты чужих реестров в этой сети искать бессмысленно
+    for (const batch of this.db.getAnchorBatchesForHash(item.hash, registry)) {
       // Связанные эпохи заякорены головой цепи; у пакетов, созданных до
       // появления связывания, on-chain лежит голый корень
       const anchored = batch.chain_root ?? batch.root
       if (await this.chain.isNotarized(anchored, rpcUrl)) {
-        return { txHash: batch.tx_hash }
+        // Пакет без метки нашёлся здесь — теперь известно, где он лежит
+        if (batch.registry === null) this.db.assignBatchRegistry(batch.root, registry)
+        return { txHash: batch.tx_hash, registry }
       }
     }
 
@@ -184,7 +269,7 @@ export class AnchorService {
       try {
         const anchored = await this.findAnchoredEvidence(item)
         if (anchored) {
-          this.db.markAnchorConfirmed(item.id, anchored.txHash ?? item.tx_hash)
+          this.db.markAnchorConfirmed(item.id, anchored.txHash ?? item.tx_hash, anchored.registry)
           this.onConfirmed(item.hash, anchored.txHash ?? item.tx_hash)
           this.emit({ type: "confirmed", item: this.db.getAnchorByHash(item.hash)! })
         } else {
@@ -195,13 +280,49 @@ export class AnchorService {
       }
     }
 
-    if (remaining.length === 1) {
+    if (remaining.length === 0) return "processed"
+
+    // Пакет, отправленный раньше и не дошедший до блока, переотправляется
+    // ровно в прежнем составе: тогда и связка эпохи прежняя. Новые записи
+    // подождут следующего прохода — иначе корень изменится, и в цепи
+    // останется звено, которое никогда не попало в реестр.
+    let inflight: AnchorQueueItem[] | null
+    try {
+      inflight = await this.inflightGroup(remaining)
+    } catch (e) {
+      for (const item of remaining) this.rescheduleAfterError(item, e)
+      return "processed"
+    }
+
+    if (inflight) {
+      await this.processBatch(inflight)
+    } else if (remaining.length === 1) {
       await this.processSingle(remaining[0])
-    } else if (remaining.length > 1) {
+    } else {
       await this.processBatch(remaining)
     }
 
     return "processed"
+  }
+
+  /**
+   * Записи пакета, транзакция которого уже уходила, но подтверждения не
+   * дождалась (обрыв или таймаут). null — таких нет или состав неполон
+   * (часть записей окончательно провалена): тогда собирается новый пакет.
+   */
+  private async inflightGroup(remaining: AnchorQueueItem[]): Promise<AnchorQueueItem[] | null> {
+    const registry = await this.chain.registry(remaining[0].rpc_url ?? undefined)
+    const byHash = new Map(remaining.map((i) => [i.hash, i]))
+
+    for (const item of remaining) {
+      const sent = this.db
+        .getAnchorBatchesForHash(item.hash, registry)
+        .find((b) => b.registry === registry && b.tx_hash !== null && b.chain_root !== null)
+      if (sent && sent.members.every((h) => byHash.has(h))) {
+        return sent.members.map((h) => byHash.get(h)!)
+      }
+    }
+    return null
   }
 
   /**
@@ -247,16 +368,15 @@ export class AnchorService {
 
   private async processSingle(item: AnchorQueueItem) {
     try {
-      const { txHash, wait } = await this.chain.sendNotarize(
-        item.hash,
-        item.rpc_url ?? undefined
-      )
-      this.db.markAnchorSent(item.id, txHash)
+      const rpcUrl = item.rpc_url ?? undefined
+      const registry = await this.chain.registry(rpcUrl)
+      const { txHash, wait } = await this.chain.sendNotarize(item.hash, rpcUrl)
+      this.db.markAnchorSent(item.id, txHash, registry)
       this.emit({ type: "sent", item: this.db.getAnchorByHash(item.hash)! })
 
-      await wait()
+      await this.withTimeout(wait(), this.confirmTimeoutMs)
 
-      this.db.markAnchorConfirmed(item.id, txHash)
+      this.db.markAnchorConfirmed(item.id, txHash, registry)
       this.onConfirmed(item.hash, txHash)
       this.emit({ type: "confirmed", item: this.db.getAnchorByHash(item.hash)! })
     } catch (e) {
@@ -268,25 +388,40 @@ export class AnchorService {
     const tree = buildMerkleTree(items.map((i) => i.hash))
     const rpcUrl = items[0].rpc_url ?? undefined
 
-    // Эпоха связывается с предыдущей: on-chain уходит голова цепи, а не голый
-    // корень пакета. Так изъятие эпохи из середины истории становится видимым.
-    const prevChainRoot = this.db.getChainHead() ?? genesisRoot()
-    const head = chainRoot(prevChainRoot, tree.root)
+    let registry: string
+    try {
+      registry = await this.chain.registry(rpcUrl)
+    } catch (e) {
+      for (const item of items) this.rescheduleAfterError(item, e)
+      return
+    }
+
+    // Эпоха связывается с предыдущей эпохой того же реестра: on-chain уходит
+    // голова цепи, а не голый корень пакета. Так изъятие эпохи из середины
+    // истории становится видимым. Повторная отправка того же состава берёт
+    // прежнюю связку: голова цепи сейчас — это она сама, и связать эпоху
+    // с собой значило бы заякорить не то значение, что записано в базе.
+    const previous = this.db.getAnchorBatch(tree.root, registry)
+    const prevChainRoot =
+      previous?.prev_chain_root ?? this.db.getChainHead(registry) ?? genesisRoot()
+    const head = previous?.chain_root ?? chainRoot(prevChainRoot, tree.root)
 
     // Состав пакета и связка фиксируются до отправки: если приложение упадёт
     // после сабмита транзакции, recovery восстановит связь hash → root → голова
-    this.db.createAnchorBatch(tree.root, items.map((i) => i.hash), {
-      prevChainRoot,
-      chainRoot: head,
-    })
+    this.db.createAnchorBatch(
+      tree.root,
+      items.map((i) => i.hash),
+      { prevChainRoot, chainRoot: head },
+      registry
+    )
 
     let txHash: string
     let wait: () => Promise<{ blockNumber: number | null }>
     try {
-      const existing = this.db.getAnchorBatch(tree.root)
+      const existing = this.db.getAnchorBatch(tree.root, registry)
       if (existing?.tx_hash && (await this.chain.isNotarized(head, rpcUrl))) {
         // Тот же состав уже заякорен предыдущей попыткой
-        this.confirmBatchItems(items, existing.tx_hash)
+        this.confirmBatchItems(items, existing.tx_hash, registry)
         return
       }
 
@@ -294,33 +429,37 @@ export class AnchorService {
       txHash = sent.txHash
       wait = sent.wait
     } catch (e) {
-      // Транзакция не ушла — пакет откатывается, записи ждут следующей попытки
-      this.db.deleteAnchorBatch(tree.root)
+      // Транзакция не ушла — новый пакет откатывается, записи ждут следующей
+      // попытки. Пакет, чья транзакция уже уходила раньше, остаётся: она ещё
+      // может оказаться в блоке, и тогда recovery найдёт его голову
+      if (!previous?.tx_hash) this.db.deleteAnchorBatch(tree.root, registry)
       for (const item of items) this.rescheduleAfterError(item, e)
       return
     }
 
-    this.db.setAnchorBatchTx(tree.root, txHash)
+    this.db.setAnchorBatchTx(tree.root, txHash, registry)
     for (const item of items) {
-      this.db.markAnchorSent(item.id, txHash)
+      this.db.markAnchorSent(item.id, txHash, registry)
       this.emit({ type: "sent", item: this.db.getAnchorByHash(item.hash)! })
     }
 
     try {
-      await wait()
+      await this.withTimeout(wait(), this.confirmTimeoutMs)
     } catch (e) {
-      // Транзакция ушла, но подтверждение оборвалось: состав пакета сохранён,
-      // следующая попытка (или recovery) увидит root on-chain и подтвердит
+      // Транзакция ушла, но подтверждение оборвалось или не пришло вовремя:
+      // состав пакета сохранён, следующая попытка (или recovery) увидит
+      // голову on-chain и подтвердит, а если транзакция пропала — отправит
+      // тот же пакет заново
       for (const item of items) this.rescheduleAfterError(item, e)
       return
     }
 
-    this.confirmBatchItems(items, txHash)
+    this.confirmBatchItems(items, txHash, registry)
   }
 
-  private confirmBatchItems(items: AnchorQueueItem[], txHash: string) {
+  private confirmBatchItems(items: AnchorQueueItem[], txHash: string, registry: string) {
     for (const item of items) {
-      this.db.markAnchorConfirmed(item.id, txHash)
+      this.db.markAnchorConfirmed(item.id, txHash, registry)
       this.onConfirmed(item.hash, txHash)
       this.emit({ type: "confirmed", item: this.db.getAnchorByHash(item.hash)! })
     }

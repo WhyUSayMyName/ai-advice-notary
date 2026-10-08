@@ -9,6 +9,7 @@ import {
   notaryIsNotarized,
   notaryGetRecord,
   notaryChainId,
+  notaryRegistry,
   disposeChain,
   setPrivateKeyProvider,
 } from "../src/main/notary"
@@ -161,7 +162,7 @@ ipcMain.handle(
         txHash: payload.txHash,
         // При пакетной фиксации в реестре лежит голова цепи, а не хеш документа.
         // Без этого блока сертификат отправил бы аудитора искать то, чего там нет.
-        batch: anchorBatchForHash(payload.hashHex),
+        batch: anchorBatchForHash(payload.hashHex, await notaryRegistry(payload.rpcUrl)),
       })
 
       return { ok: true, filePath: save.filePath }

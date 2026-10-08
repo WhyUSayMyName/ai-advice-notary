@@ -1,6 +1,7 @@
 import path from "node:path"
 import type { ArtifactRecord, AnchorBatch } from "./database-core"
 import { buildMerkleTree } from "./merkle-core"
+import { anchorScope } from "./registry-core"
 
 export type EvidenceBatchProof = {
   /** Корень merkle-пакета. */
@@ -59,6 +60,10 @@ export type ChainInfo = {
 export type EvidenceOptions = {
   /** Пакет фиксации для хеша (свежайший с транзакцией) — из БД оператора. */
   batchFor?: (hash: string) => AnchorBatch | undefined
+  /** Реестр пакета доказательств — тот, что описан в его заголовке. */
+  registry?: string
+  /** Реестры, в которых хеш числится заякоренным (см. getAnchorRegistriesForHash). */
+  registriesFor?: (hash: string) => Array<string | null>
 }
 
 export function buildEvidenceBundle(
@@ -73,6 +78,15 @@ export function buildEvidenceBundle(
         : a.artifact_id.localeCompare(b.artifact_id)
     )
     .map((r) => {
+      // notarized в пакете означает «заякорено в реестре из заголовка».
+      // Документ, заякоренный только в другой сети, здесь не заякорен:
+      // пометь его заякоренным — и аудитор получит NOT_ON_CHAIN, ложную
+      // тревогу о подмене. Фиксации без учёта реестра остаются как были
+      const elsewhere =
+        options.registry !== undefined &&
+        options.registriesFor !== undefined &&
+        anchorScope(options.registriesFor(r.hash), options.registry).kind === "elsewhere"
+
       const entry: EvidenceArtifact = {
         artifact_id: r.artifact_id,
         display_name: r.display_name,
@@ -81,12 +95,12 @@ export function buildEvidenceBundle(
         file_path: r.file_path,
         hash: r.hash,
         previous_hash: r.previous_hash,
-        notarized: Boolean(r.notarized),
+        notarized: Boolean(r.notarized) && !elsewhere,
         blockchain_tx: r.blockchain_tx,
         created_at: r.created_at,
       }
 
-      const batch = options.batchFor?.(r.hash)
+      const batch = elsewhere ? undefined : options.batchFor?.(r.hash)
       if (batch) {
         // Proof пересчитывается из состава пакета в момент экспорта —
         // хранить его не нужно, канон дерева детерминирован

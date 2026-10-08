@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import path from "node:path"
 import { buildEvidenceBundle } from "../evidence-core"
 import type { ArtifactRecord } from "../database-core"
 
@@ -10,7 +11,9 @@ function rec(partial: Partial<ArtifactRecord>): ArtifactRecord {
     id: nextId++,
     artifact_id: "art-1",
     display_name: "Doc",
-    file_path: "C:\\docs\\report.pdf",
+    // Путь в формате текущей ОС: имя файла берёт path.basename, а он
+    // на Linux не считает обратную косую разделителем
+    file_path: path.join("docs", "report.pdf"),
     hash: H(1),
     version: 1,
     previous_hash: null,
@@ -79,6 +82,7 @@ describe("evidence-core", () => {
           hash === H(2)
             ? {
                 root,
+                registry: "31337:0x" + "c".repeat(40),
                 tx_hash: "0xBATCH_TX",
                 leaf_count: 3,
                 created_at: 1,
@@ -116,6 +120,7 @@ describe("evidence-core", () => {
       {
         batchFor: () => ({
           root,
+          registry: "31337:0x" + "c".repeat(40),
           tx_hash: "0xTX",
           leaf_count: 2,
           created_at: 1,
@@ -140,5 +145,49 @@ describe("evidence-core", () => {
       chainId: null,
     })
     expect(bundle.artifacts[0].batch).toBeUndefined()
+  })
+})
+
+describe("evidence-core: реестры", () => {
+  const LOCAL = "31337:0x" + "a".repeat(40)
+  const SEPOLIA = "11155111:0x" + "b".repeat(40)
+  const batch = {
+    root: H(100),
+    registry: LOCAL,
+    tx_hash: "0xTX",
+    leaf_count: 1,
+    created_at: 1,
+    prev_chain_root: null,
+    chain_root: null,
+    members: [H(1)],
+  }
+
+  it("документ, заякоренный только в другом реестре, в этом пакете не заякорен", () => {
+    // Иначе аудитор Sepolia получил бы NOT_ON_CHAIN — ложную тревогу о подмене
+    const bundle = buildEvidenceBundle(
+      [rec({ hash: H(1), notarized: 1, blockchain_tx: "0xTX" })],
+      { contract: "0x" + "b".repeat(40), chainId: 11155111 },
+      { registry: SEPOLIA, registriesFor: () => [LOCAL], batchFor: () => batch }
+    )
+
+    expect(bundle.artifacts[0].notarized).toBe(false)
+    expect(bundle.artifacts[0].batch).toBeUndefined()
+  })
+
+  it("якорь в своём реестре и фиксации до учёта реестров остаются заякоренными", () => {
+    const own = buildEvidenceBundle(
+      [rec({ hash: H(1), notarized: 1 })],
+      { contract: "0x" + "a".repeat(40), chainId: 31337 },
+      { registry: LOCAL, registriesFor: () => [LOCAL, SEPOLIA], batchFor: () => batch }
+    )
+    expect(own.artifacts[0].notarized).toBe(true)
+    expect(own.artifacts[0].batch?.root).toBe(H(100))
+
+    const legacy = buildEvidenceBundle(
+      [rec({ hash: H(1), notarized: 1 })],
+      { contract: "0x" + "a".repeat(40), chainId: 31337 },
+      { registry: LOCAL, registriesFor: () => [null] }
+    )
+    expect(legacy.artifacts[0].notarized).toBe(true)
   })
 })

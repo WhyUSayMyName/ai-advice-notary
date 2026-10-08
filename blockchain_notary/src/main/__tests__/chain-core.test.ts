@@ -128,3 +128,24 @@ describe("chain-core: проверка непрерывности", () => {
     expect(verifyChain(grown).ok).toBe(true)
   })
 })
+
+describe("золотые значения канона", () => {
+  // Те же литералы проверяет тест независимого верификатора
+  // (verifier-cli/test/verify.test.mjs). Две реализации канона не делят код;
+  // расхождение любой из них с этими значениями ломает тесты на своей стороне.
+
+  it("merkle-корень, путь и голова цепи для листьев H(1), H(2), H(3)", async () => {
+    const { buildMerkleTree } = await import("../merkle-core")
+    const tree = buildMerkleTree([H(1), H(2), H(3)])
+
+    expect(tree.root).toBe("0x93e34ecb30d456c2bb3903c45dd51d053db3e66522a0a2eaf5fafa58312ed037")
+    expect(tree.proofFor(H(2))).toEqual([
+      "0x1fd4247443c9440cb3c48c28851937196bc156032d70a96c98e127ecb347e45f",
+      "0xd9cf8add8675a1b25627d7b0ec33bc177cb3930b0b6e995d79c386b980b2f4d6",
+    ])
+    expect(genesisRoot()).toBe("0xc06d7b0c82d4f9a6e767a461f10787d4d6db8703570e9f6613e602ddf259a758")
+    expect(chainRoot(genesisRoot(), tree.root)).toBe(
+      "0xbab3c3544624d957e6edf40d15dd6e3097aa2189a88663e579236977865f7b3e"
+    )
+  })
+})

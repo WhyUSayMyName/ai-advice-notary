@@ -237,3 +237,93 @@ describe("пакеты фиксации (эпохи)", () => {
     expect(db.listAnchorBatches()).toEqual([])
   })
 })
+
+describe("миграция пакетов к учёту реестров", () => {
+  let dir: string
+  let dbPath: string
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "notary-test-"))
+    dbPath = path.join(dir, "notary.db")
+
+    // Схема до учёта реестров: корень — первичный ключ, у очереди нет registry
+    const legacy = new Database(dbPath)
+    legacy.exec(`
+      CREATE TABLE anchor_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hash TEXT NOT NULL UNIQUE,
+        rpc_url TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at INTEGER NOT NULL DEFAULT 0,
+        tx_hash TEXT,
+        last_error TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE anchor_batches (
+        root TEXT PRIMARY KEY,
+        tx_hash TEXT,
+        leaf_count INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        prev_chain_root TEXT,
+        chain_root TEXT
+      );
+      CREATE TABLE anchor_batch_members (
+        root TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        PRIMARY KEY (root, hash)
+      );
+      INSERT INTO anchor_queue (hash, status, tx_hash, created_at, updated_at)
+        VALUES ('${H(1)}', 'confirmed', '0xTX1', 1, 1);
+      -- Две эпохи с одинаковым временем: порядок задаёт rowid
+      INSERT INTO anchor_batches VALUES ('${H(100)}', '0xTX1', 2, 5, '${H(900)}', '${H(901)}');
+      INSERT INTO anchor_batches VALUES ('${H(200)}', '0xTX2', 2, 5, '${H(901)}', '${H(902)}');
+      INSERT INTO anchor_batch_members VALUES ('${H(100)}', '${H(1)}'), ('${H(100)}', '${H(2)}');
+    `)
+    legacy.close()
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("старые пакеты и записи переносятся без реестра, порядок эпох сохраняется", () => {
+    const db = createDatabase(dbPath)
+
+    const batch = db.getAnchorBatchesForHash(H(1))[0]
+    expect(batch.registry).toBeNull()
+    expect(batch.members).toEqual([H(1), H(2)])
+    expect(db.getAnchorByHash(H(1))!.registry).toBeNull()
+    expect(db.getAnchorRegistriesForHash(H(1))).toEqual([null])
+
+    // Без реестра — та же цепь, что и раньше, в том же порядке
+    expect(db.getChainLinks().map((l) => l.chainRoot)).toEqual([H(901), H(902)])
+    expect(db.getChainHead()).toBe(H(902))
+
+    db.close()
+  })
+
+  it("после миграции тот же корень можно записать в другом реестре", () => {
+    const db = createDatabase(dbPath)
+    const reg = "11155111:0x" + "b".repeat(40)
+
+    db.createAnchorBatch(H(100), [H(1), H(2)], { prevChainRoot: H(7), chainRoot: H(8) }, reg)
+
+    expect(db.getAnchorBatch(H(100), reg)?.chain_root).toBe(H(8))
+    expect(db.getAnchorBatch(H(100), null)?.chain_root).toBe(H(901))
+
+    // Откат пакета одного реестра не трогает общий состав
+    db.deleteAnchorBatch(H(100), reg)
+    expect(db.getAnchorBatch(H(100), null)?.members).toEqual([H(1), H(2)])
+
+    db.close()
+  })
+
+  it("миграция идемпотентна", () => {
+    createDatabase(dbPath).close()
+    const db = createDatabase(dbPath)
+    expect(db.listAnchorBatches()).toHaveLength(2)
+    db.close()
+  })
+})

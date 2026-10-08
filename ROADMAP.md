@@ -51,27 +51,6 @@ system for provable integrity of digital documents and AI-generated advice.
   The gap between an auto-captured dialog and a human attestation is what
   distinguishes a validated decision from raw AI output.
 
-## Next
-- **Phase 5.2 — Real networks and experiments.**
-  Public testnet deployment; experimental evaluation (cost, latency,
-  throughput — scenarios S1–S4, metrics M1–M6 from the research plan,
-  single vs batched anchoring) with published results.
-- **Phase 6 — Production readiness.**
-  Key management outside `.env` (OS-encrypted storage / external anchor service),
-  CI (contract + app tests + lint), UI redesign and decomposition of `App.tsx`.
-- **Phase 7 — Integration layer (EDMS/СЭД).**
-  Extract the electron-free core (`database-core`, `anchor-service`,
-  `merkle-core`, `evidence-core`) into a `notary-core` package and ship a
-  headless sidecar service on top of it: REST API (`POST /artifacts` accepting
-  a file or a bare hash, confirmation webhooks, evidence bundle export) plus a
-  zero-integration folder-watcher mode. EDMS workflow engines (Directum RX,
-  ELMA365, 1C:DO, Docsvision, Tessa) call the API on document lifecycle events;
-  hash-idempotent enqueueing makes retries from workflows safe. The desktop app
-  remains the standalone mode for small organizations. Positioning: a
-  provability layer on top of an existing EDMS — anchoring complements
-  qualified e-signatures (authorship) with proof of existence in time that
-  even the EDMS administrator cannot rewrite.
-
 - **Phase 9 — Linked anchor ledger (gap-evident history).**
   Epochs are chained in the Certificate Transparency style: each batch commits to
   the previous chain head, `Cₙ = SHA-256(0x02 ‖ Cₙ₋₁ ‖ rootₙ)`, and `Cₙ` is what
@@ -86,6 +65,39 @@ system for provable integrity of digital documents and AI-generated advice.
   (never-anchored data stays invisible — that is an organizational control), the
   genesis and published head must be trusted out of band, and non-equivocation
   holds only relative to a committed anchoring identity.
+
+- **Phase 6 (part) — Keys, CI, installer, registry-aware anchoring.**
+  The signing key lives in OS-encrypted storage (DPAPI / Keychain / libsecret
+  via Electron `safeStorage`) and never reaches the renderer, IPC responses or
+  logs; the MCP server holds no key at all; the `NOTARY_PK` env fallback is
+  flagged in the UI. CI on GitHub Actions: contract tests; app typecheck, lint,
+  unit tests and builds on Linux; verifier isolation guard and verifier tests
+  (the real CLI against a fake node, canon pinned by golden vectors shared with
+  the app). Windows installer. Every anchoring records its registry
+  (chainId + contract), epoch chains are per registry, and audit / evidence /
+  certificates only check the current registry — switching networks can no
+  longer look like tampering.
+
+## Next
+- **Phase 5.2 — Real networks and experiments.**
+  Public testnet deployment; experimental evaluation (cost, latency,
+  throughput — scenarios S1–S4, metrics M1–M6 from the research plan,
+  single vs batched anchoring) with published results.
+- **Phase 6 — Production readiness (remaining).**
+  Decomposition of `App.tsx` into screens following the approved UI design;
+  optional external key custody (HSM / KMS) for the headless service.
+- **Phase 7 — Integration layer (EDMS/СЭД).**
+  Extract the electron-free core (`database-core`, `anchor-service`,
+  `merkle-core`, `evidence-core`) into a `notary-core` package and ship a
+  headless sidecar service on top of it: REST API (`POST /artifacts` accepting
+  a file or a bare hash, confirmation webhooks, evidence bundle export) plus a
+  zero-integration folder-watcher mode. EDMS workflow engines (Directum RX,
+  ELMA365, 1C:DO, Docsvision, Tessa) call the API on document lifecycle events;
+  hash-idempotent enqueueing makes retries from workflows safe. The desktop app
+  remains the standalone mode for small organizations. Positioning: a
+  provability layer on top of an existing EDMS — anchoring complements
+  qualified e-signatures (authorship) with proof of existence in time that
+  even the EDMS administrator cannot rewrite.
 
 ## Research track
 
@@ -117,7 +129,8 @@ system for provable integrity of digital documents and AI-generated advice.
 
 **Дальше:** этап 5.2 — testnet и экспериментальная оценка
 (стоимость/латентность/пропускная способность, одиночная vs пакетная
-фиксация); этап 6 — управление ключами, CI, редизайн UI; этап 7 —
+фиксация); этап 6 — декомпозиция интерфейса (ключ подписи в защищённом хранилище ОС,
+CI и учёт реестра у каждой фиксации уже сделаны); этап 7 —
 интеграционный слой для СЭД: выделение notary-core, headless-сервис с REST
 API (файл или готовый хеш, webhook, выгрузка пакета доказательств) и режим
 наблюдателя за папками; вызов из workflow-движков СЭД по событиям жизненного

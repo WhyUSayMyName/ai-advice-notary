@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Sidebar, type ScreenId } from "./components/Sidebar"
 import { Screen } from "./components/Screen"
 import { Button, Toast } from "./components/ui"
@@ -16,6 +16,10 @@ export default function App() {
   const [logsOpen, setLogsOpen] = useState(false)
 
   const [rpcUrl, setRpcUrl] = useState("http://127.0.0.1:8545")
+  // Аудит и эпохи сверяются с реестром узла из поля «Сеть». Через ref, чтобы
+  // загрузчики не пересоздавались — и не перезапускались — на каждый символ
+  const rpcUrlRef = useRef(rpcUrl)
+  rpcUrlRef.current = rpcUrl
   const [netStatus, setNetStatus] = useState("Отключено")
   const [chainId, setChainId] = useState<number | null>(null)
   const [blockNumber, setBlockNumber] = useState<number | null>(null)
@@ -116,7 +120,7 @@ export default function App() {
   }, [])
 
   const runAudit = useCallback(async () => {
-    const res = await window.api.auditArtifacts()
+    const res = await window.api.auditArtifacts(rpcUrlRef.current)
     if (!res.ok) {
       log(`Ошибка аудита: ${res.error}`)
       return
@@ -155,7 +159,7 @@ export default function App() {
   }, [loadQueue])
 
   const loadBatches = useCallback(async () => {
-    const res = await window.api.listAnchorBatches()
+    const res = await window.api.listAnchorBatches(rpcUrlRef.current)
     if (!res.ok) {
       log(`Ошибка загрузки эпох: ${res.error}`)
       return
@@ -255,6 +259,9 @@ export default function App() {
       setBlockNumber(res.blockNumber ?? null)
       setNetStatus("Подключено")
       log(`Сеть: chainId=${res.chainId}, блок ${res.blockNumber}`)
+      // Сеть могла смениться — аудит и эпохи пересчитываются под её реестр
+      void runAudit()
+      void loadBatches()
     } else {
       setNetStatus("Ошибка")
       log(`Ошибка подключения: ${res.error}`)

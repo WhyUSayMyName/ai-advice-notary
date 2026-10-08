@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { randomBytes } from "node:crypto"
 import { createDatabase } from "../database-core"
 import { AnchorService, type ChainAdapter } from "../anchor-service"
+import { registryId } from "../registry-core"
 
 /**
  * Интеграционная приёмка против реального узла. Запускается только когда
@@ -39,7 +40,10 @@ async function makeRealAdapter(): Promise<ChainAdapter> {
     },
   })
 
+  const { chainId } = await provider.getNetwork()
+
   return {
+    registry: async () => registryId(chainId, NOTARY_ADDRESS!),
     isNotarized: async (hash) => Boolean(await contract.isNotarized(hash)),
     sendNotarize: async (hash) => asSent(await contract.notarize(hash)),
     sendAnchorRoot: async (root, leafCount) =>
@@ -77,6 +81,7 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     // Адаптер-«авария»: транзакция реально уходит в сеть (и майнится),
     // но ожидание подтверждения обрывается, как при падении приложения
     const crashing: ChainAdapter = {
+      registry: real.registry,
       isNotarized: real.isNotarized,
       sendAnchorRoot: real.sendAnchorRoot,
       sendNotarize: async (hash) => {

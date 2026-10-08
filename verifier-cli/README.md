@@ -48,6 +48,7 @@ root on-chain. One transaction anchors the whole batch.
 | `OK_HISTORICAL` | older version: its hash is anchored on-chain (file itself is not compared) |
 | `TAMPERED` | file content differs from the recorded hash; if the recorded hash *is* on-chain, notarized content was modified |
 | `BAD_PROOF` | batched entry: the Merkle proof does not fold to the claimed root |
+| `BAD_LINK` | linked epoch: the chain head does not follow from `prev_chain_root` and the root |
 | `MISSING_FILE` | bundle references a file that is absent — possible destruction of evidence |
 | `NOT_ON_CHAIN` | bundle claims notarization but the registry has no such record |
 | `LOCAL_ONLY` | entry was never notarized (informational) |
@@ -55,6 +56,18 @@ root on-chain. One transaction anchors the whole batch.
 Exit code `0` — everything checks out; `2` — at least one problem found.
 
 Add `--json` for machine-readable output.
+
+## Tests
+
+```shell
+npm test
+```
+
+The tests run this CLI as a child process against a fake JSON-RPC node and
+hand-crafted bundles — they import nothing from the operator's app and add no
+dependencies. The Merkle and chain canon is pinned by golden vectors that the
+app's own tests assert too, so the two independent implementations cannot
+drift apart silently.
 
 ## Trust notes
 
