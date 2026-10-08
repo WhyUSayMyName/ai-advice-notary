@@ -66,6 +66,25 @@ export type EvidenceOptions = {
   registriesFor?: (hash: string) => Array<string | null>
 }
 
+/**
+ * Подсказка аудитору, каким узлом пользовался оператор, — только схема и хост.
+ *
+ * Пакет уходит наружу, а у Alchemy и Infura ключ API зашит прямо в путь
+ * (…/v2/<ключ>); в адресе бывают и логин с паролем. Целиком такой адрес унёс
+ * бы секрет оператора к постороннему. Аудитору же нужен не узел оператора —
+ * верификатор всё равно требует свой --rpc, — а лишь намёк на провайдера.
+ */
+export function rpcHint(rpcUrl?: string): string | null {
+  if (!rpcUrl) return null
+  try {
+    const origin = new URL(rpcUrl).origin
+    // У нестандартных схем origin — буквально строка "null"
+    return origin === "null" ? null : origin
+  } catch {
+    return null
+  }
+}
+
 export function buildEvidenceBundle(
   records: ArtifactRecord[],
   chain: ChainInfo,
@@ -125,7 +144,7 @@ export function buildEvidenceBundle(
     chain: {
       chain_id: chain.chainId,
       contract: chain.contract,
-      rpc_url_hint: chain.rpcUrl ?? null,
+      rpc_url_hint: rpcHint(chain.rpcUrl),
     },
     artifacts,
     verification: {

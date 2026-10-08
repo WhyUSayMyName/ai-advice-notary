@@ -61,6 +61,31 @@ describe("evidence-core", () => {
     expect(bundle.artifacts.map((a) => a.version)).toEqual([1, 2, 3])
   })
 
+  // Пакет отдаётся постороннему. У Alchemy/Infura ключ лежит в пути адреса,
+  // и до этой правки первый же экспорт уносил его аудитору.
+  it("в пакет не попадает ключ узла — только схема и хост", () => {
+    const bundle = buildEvidenceBundle([], {
+      contract: "0xC",
+      chainId: 11155111,
+      rpcUrl: "https://eth-sepolia.g.alchemy.com/v2/secret-api-key",
+    })
+
+    expect(bundle.chain.rpc_url_hint).toBe("https://eth-sepolia.g.alchemy.com")
+    expect(JSON.stringify(bundle)).not.toContain("secret-api-key")
+  })
+
+  it("rpcHint: логин и пароль срезаются, порт остаётся, мусор даёт null", async () => {
+    const { rpcHint } = await import("../evidence-core")
+
+    expect(rpcHint("https://user:pass@node.example:8443/rpc?token=t")).toBe(
+      "https://node.example:8443"
+    )
+    expect(rpcHint("http://127.0.0.1:8545")).toBe("http://127.0.0.1:8545")
+    expect(rpcHint("не адрес")).toBeNull()
+    expect(rpcHint("/var/run/geth.ipc")).toBeNull()
+    expect(rpcHint(undefined)).toBeNull()
+  })
+
   it("chainId и rpcUrl опциональны", () => {
     const bundle = buildEvidenceBundle([], { contract: "0xC", chainId: null })
 
