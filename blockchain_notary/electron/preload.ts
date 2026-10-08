@@ -36,8 +36,8 @@ contextBridge.exposeInMainWorld("api", {
   getArtifactHistory: (artifactId: string) =>
     ipcRenderer.invoke("artifact:history", artifactId),
 
-  auditArtifacts: () =>
-    ipcRenderer.invoke("artifact:audit"),
+  auditArtifacts: (rpcUrl?: string) =>
+    ipcRenderer.invoke("artifact:audit", rpcUrl),
 
   inspectVersionChains: () =>
     ipcRenderer.invoke("artifact:inspectChains"),
@@ -63,7 +63,7 @@ contextBridge.exposeInMainWorld("api", {
 
   flushAnchorQueue: () => ipcRenderer.invoke("anchor:flush"),
 
-  listAnchorBatches: () => ipcRenderer.invoke("anchor:batches"),
+  listAnchorBatches: (rpcUrl?: string) => ipcRenderer.invoke("anchor:batches", rpcUrl),
 
   onAnchorUpdated: (callback: (event: unknown) => void) => {
     const listener = (_e: Electron.IpcRendererEvent, payload: unknown) => callback(payload)

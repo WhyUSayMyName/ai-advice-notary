@@ -18,6 +18,7 @@ import {
   listAnchorQueue,
   verifyAnchorChain,
 } from "./anchor"
+import { notaryRegistry } from "./notary"
 
 ipcMain.handle("artifact:register", async (_event, filePath: string, displayName?: string) => {
   try {
@@ -108,9 +109,9 @@ ipcMain.handle("artifact:history", async (_event, artifactId: string) => {
   }
 })
 
-ipcMain.handle("artifact:audit", async () => {
+ipcMain.handle("artifact:audit", async (_event, rpcUrl?: string) => {
   try {
-    const data = await auditArtifacts()
+    const data = await auditArtifacts(rpcUrl)
     return { ok: true, results: data }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -146,9 +147,17 @@ ipcMain.handle("anchor:list", async () => {
   }
 })
 
-ipcMain.handle("anchor:batches", async () => {
+ipcMain.handle("anchor:batches", async (_event, rpcUrl?: string) => {
   try {
-    return { ok: true, batches: listAnchorBatches(), chain: verifyAnchorChain() }
+    // Эпохи и их цепь — свои у каждого реестра. Без узла реестр неизвестен:
+    // тогда показываем все пакеты, а вердикт по цепи не выносим
+    const registry = await notaryRegistry(rpcUrl).catch(() => undefined)
+    return {
+      ok: true,
+      batches: listAnchorBatches(registry),
+      chain: registry ? verifyAnchorChain(registry) : undefined,
+      registry: registry ?? null,
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return { ok: false, error: msg }

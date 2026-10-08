@@ -1,8 +1,10 @@
 import { access } from "node:fs/promises"
 import { constants } from "node:fs"
 import { sha256FileHex } from "./filehash"
-import { getArtifacts } from "./database"
+import { getArtifacts, getDatabase } from "./database"
 import { resolveAnchoredRecord } from "./artifacts"
+import { notaryRegistry } from "./notary"
+import { anchorScope } from "./registry-core"
 
 export type AuditStatus =
   | "LOCAL_ONLY"
@@ -10,6 +12,10 @@ export type AuditStatus =
   | "MISSING_FILE"
   | "HASH_MISMATCH"
   | "ON_CHAIN_MISSING"
+  // Заякорено только в других реестрах — в текущем проверять нечего
+  | "OTHER_REGISTRY"
+  // Фиксация до учёта реестров, в текущем не найдена: где она — неизвестно
+  | "REGISTRY_UNKNOWN"
 
 export type AuditResult = {
   id: number
@@ -23,6 +29,8 @@ export type AuditResult = {
   status: AuditStatus
   author?: string
   timestamp?: number
+  /** Для OTHER_REGISTRY — реестры, где документ заякорен. */
+  registries?: string[]
 }
 
 async function fileExists(filePath: string) {
@@ -34,87 +42,72 @@ async function fileExists(filePath: string) {
   }
 }
 
-export async function auditArtifacts(): Promise<AuditResult[]> {
+/**
+ * Аудит сверяет документы с реестром, к которому подключено приложение.
+ * Отсутствие в реестре — тревога только для документов, заякоренных именно
+ * в нём: после переключения сети прежние документы иначе выглядели бы
+ * подменёнными, а ложная тревога в этой системе хуже молчания.
+ */
+export async function auditArtifacts(rpcUrl?: string): Promise<AuditResult[]> {
   const artifacts = getArtifacts()
+  const registry = await notaryRegistry(rpcUrl)
+  const db = getDatabase()
   const results: AuditResult[] = []
 
   for (const a of artifacts) {
-    const exists = await fileExists(a.file_path)
+    const base = {
+      id: a.id,
+      artifact_id: a.artifact_id,
+      file_path: a.file_path,
+      stored_hash: a.hash,
+      blockchain_tx: a.blockchain_tx,
+      notarized: a.notarized,
+      created_at: a.created_at,
+    }
 
-    if (!exists) {
-      results.push({
-        id: a.id,
-        artifact_id: a.artifact_id,
-        file_path: a.file_path,
-        stored_hash: a.hash,
-        current_hash: null,
-        blockchain_tx: a.blockchain_tx,
-        notarized: a.notarized,
-        created_at: a.created_at,
-        status: "MISSING_FILE",
-      })
+    if (!(await fileExists(a.file_path))) {
+      results.push({ ...base, current_hash: null, status: "MISSING_FILE" })
       continue
     }
 
     const currentHash = await sha256FileHex(a.file_path)
 
     if (currentHash !== a.hash) {
-      results.push({
-        id: a.id,
-        artifact_id: a.artifact_id,
-        file_path: a.file_path,
-        stored_hash: a.hash,
-        current_hash: currentHash,
-        blockchain_tx: a.blockchain_tx,
-        notarized: a.notarized,
-        created_at: a.created_at,
-        status: "HASH_MISMATCH",
-      })
+      results.push({ ...base, current_hash: currentHash, status: "HASH_MISMATCH" })
       continue
     }
 
     if (!a.notarized) {
+      results.push({ ...base, current_hash: currentHash, status: "LOCAL_ONLY" })
+      continue
+    }
+
+    const scope = anchorScope(db.getAnchorRegistriesForHash(a.hash), registry)
+    if (scope.kind === "elsewhere") {
       results.push({
-        id: a.id,
-        artifact_id: a.artifact_id,
-        file_path: a.file_path,
-        stored_hash: a.hash,
+        ...base,
         current_hash: currentHash,
-        blockchain_tx: a.blockchain_tx,
-        notarized: a.notarized,
-        created_at: a.created_at,
-        status: "LOCAL_ONLY",
+        status: "OTHER_REGISTRY",
+        registries: scope.registries,
       })
       continue
     }
 
     // Batch-aware: фиксация могла быть одиночной или через корень merkle-пакета
-    const record = await resolveAnchoredRecord(a.hash)
+    const record = await resolveAnchoredRecord(a.hash, rpcUrl)
 
     if (!record.exists) {
       results.push({
-        id: a.id,
-        artifact_id: a.artifact_id,
-        file_path: a.file_path,
-        stored_hash: a.hash,
+        ...base,
         current_hash: currentHash,
-        blockchain_tx: a.blockchain_tx,
-        notarized: a.notarized,
-        created_at: a.created_at,
-        status: "ON_CHAIN_MISSING",
+        status: scope.kind === "current" ? "ON_CHAIN_MISSING" : "REGISTRY_UNKNOWN",
       })
       continue
     }
 
     results.push({
-      id: a.id,
-      artifact_id: a.artifact_id,
-      file_path: a.file_path,
-      stored_hash: a.hash,
+      ...base,
       current_hash: currentHash,
-      blockchain_tx: a.blockchain_tx,
-      notarized: a.notarized,
-      created_at: a.created_at,
       status: "ON_CHAIN_OK",
       author: record.author,
       timestamp: record.timestamp,

@@ -20,6 +20,8 @@ declare global {
     | "MISSING_FILE"
     | "HASH_MISMATCH"
     | "ON_CHAIN_MISSING"
+    | "OTHER_REGISTRY"
+    | "REGISTRY_UNKNOWN"
 
   type AuditResult = {
     id: number
@@ -33,6 +35,8 @@ declare global {
     status: AuditStatus
     author?: string
     timestamp?: number
+    /** Для OTHER_REGISTRY — реестры ("chainId:контракт"), где документ заякорен */
+    registries?: string[]
   }
 
 type VersionChainStatus =
@@ -65,6 +69,8 @@ type AnchorQueueItem = {
   id: number
   hash: string
   rpc_url: string | null
+  /** Реестр ("chainId:контракт"), где хеш заякорен; null — ещё нет или до учёта реестров */
+  registry: string | null
   status: AnchorStatus
   attempts: number
   next_attempt_at: number
@@ -76,6 +82,8 @@ type AnchorQueueItem = {
 
 type AnchorBatchSummary = {
   root: string
+  /** Реестр ("chainId:контракт"); null — пакет создан до учёта реестров */
+  registry: string | null
   tx_hash: string | null
   leaf_count: number
   created_at: number
@@ -232,7 +240,7 @@ type AnchorUpdateEvent = {
         error?: string
       }>
 
-      auditArtifacts: () => Promise<{
+      auditArtifacts: (rpcUrl?: string) => Promise<{
         ok: boolean
         results?: AuditResult[]
         error?: string
@@ -273,7 +281,7 @@ type AnchorUpdateEvent = {
         error?: string
       }>
 
-      listAnchorBatches: () => Promise<{
+      listAnchorBatches: (rpcUrl?: string) => Promise<{
         ok: boolean
         batches?: AnchorBatchSummary[]
         chain?: ChainVerdict

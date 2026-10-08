@@ -3,6 +3,7 @@ import { JsonRpcProvider, Wallet, Contract } from "ethers"
 
 // Единый источник ABI: экспортируется из hardhat-артефакта скриптом scripts/deploy-notary.ts
 import NOTARY_ABI from "./abi/Notary.json"
+import { registryId } from "./registry-core"
 
 function mustEnv(name: string): string {
   const v = process.env[name]
@@ -17,6 +18,8 @@ type Handles = {
   read: Contract
   /** Отправка транзакций; создаётся лениво, чтобы читать можно было без ключа */
   write?: Contract
+  /** Реестр подключения; сеть узла за время жизни подключения не меняется */
+  registry?: Promise<string>
 }
 
 /**
@@ -86,6 +89,24 @@ export function disposeChain() {
 export async function notaryChainId(rpcUrl?: string): Promise<number> {
   const net = await handlesFor(rpcUrl).provider.getNetwork()
   return Number(net.chainId)
+}
+
+/**
+ * Реестр активного подключения: chainId узла + адрес контракта.
+ * Запрос сети кэшируется на подключение — воркер спрашивает его на каждую
+ * запись, а смена адреса узла всё равно создаёт новое подключение.
+ */
+export async function notaryRegistry(rpcUrl?: string): Promise<string> {
+  const h = handlesFor(rpcUrl)
+  if (!h.registry) {
+    const address = mustEnv("NOTARY_ADDRESS")
+    h.registry = h.provider.getNetwork().then((net) => registryId(net.chainId, address))
+    // Неудачный запрос не должен застрять в кэше навсегда
+    h.registry.catch(() => {
+      if (active === h) h.registry = undefined
+    })
+  }
+  return h.registry
 }
 
 export async function notaryIsNotarized(hashHex: string, rpcUrl?: string) {

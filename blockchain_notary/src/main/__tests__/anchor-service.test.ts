@@ -6,9 +6,18 @@ import { chainRoot, genesisRoot, verifyChain } from "../chain-core"
 
 const H = (n: number) => "0x" + String(n).padStart(64, "0")
 
-/** Фейковый чейн: множество зафиксированных хешей + управляемые отказы. */
+const LOCAL = "31337:0x" + "a".repeat(40)
+const SEPOLIA = "11155111:0x" + "b".repeat(40)
+
+/**
+ * Фейковый чейн: множество зафиксированных хешей + управляемые отказы.
+ * Сетей несколько, у каждой свой реестр; переключение имитирует смену
+ * узла и контракта в настройках приложения.
+ */
 function makeFakeChain() {
-  const onChain = new Set<string>()
+  const networks = new Map<string, Set<string>>([[LOCAL, new Set()]])
+  let current = LOCAL
+  const net = () => networks.get(current)!
   let failSends = 0
   let failWaits = 0
   let sentTxCount = 0
@@ -24,15 +33,18 @@ function makeFakeChain() {
           failWaits--
           throw new Error("node died while waiting")
         }
-        onChain.add(target)
+        net().add(target)
         return { blockNumber: 1 }
       },
     }
   }
 
   const chain: ChainAdapter = {
+    async registry() {
+      return current
+    },
     async isNotarized(hash) {
-      return onChain.has(hash)
+      return net().has(hash)
     },
     async sendNotarize(hash) {
       if (failSends > 0) {
@@ -53,7 +65,13 @@ function makeFakeChain() {
 
   return {
     chain,
-    onChain,
+    get onChain() {
+      return net()
+    },
+    useNetwork(registry: string) {
+      if (!networks.has(registry)) networks.set(registry, new Set())
+      current = registry
+    },
     anchoredRoots,
     txCount: () => sentTxCount,
     setFailSends: (n: number) => (failSends = n),
@@ -355,13 +373,13 @@ describe("anchor-service", () => {
     service.enqueue(H(4))
     await service.processNext()
 
-    const links = db.getChainLinks()
+    const links = db.getChainLinks(LOCAL)
     expect(links).toHaveLength(2)
     expect(links[1].prev).toBe(links[0].chainRoot)
 
     const verdict = verifyChain(links)
     expect(verdict.ok).toBe(true)
-    if (verdict.ok) expect(verdict.head).toBe(db.getChainHead())
+    if (verdict.ok) expect(verdict.head).toBe(db.getChainHead(LOCAL))
   })
 
   it("связывание: изъятие эпохи из середины ломает проверку непрерывности", async () => {
@@ -372,7 +390,7 @@ describe("anchor-service", () => {
       await service.processNext()
     }
 
-    const links = db.getChainLinks()
+    const links = db.getChainLinks(LOCAL)
     expect(verifyChain(links).ok).toBe(true)
 
     // Оператор предъявляет историю без второй эпохи
@@ -443,8 +461,117 @@ describe("anchor-service", () => {
     expect(fake.txCount()).toBe(1)
   })
 
+  it("реестр: пакет и записи очереди помечаются реестром, куда ушла транзакция", async () => {
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+    await service.processNext()
+
+    expect(db.getAnchorBatchesForHash(H(1))[0].registry).toBe(LOCAL)
+    expect(db.getAnchorByHash(H(1))!.registry).toBe(LOCAL)
+    expect(db.getAnchorRegistriesForHash(H(1))).toEqual([LOCAL])
+  })
+
+  it("реестр: одиночная фиксация тоже помечается", async () => {
+    const service = makeService()
+    service.enqueue(H(1))
+    await service.processNext()
+
+    expect(db.getAnchorByHash(H(1))!.registry).toBe(LOCAL)
+    expect(db.getAnchorRegistriesForHash(H(1))).toEqual([LOCAL])
+  })
+
+  it("реестр: цепь эпох новой сети начинается с генезиса, а не с головы старой", async () => {
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+    await service.processNext()
+
+    fake.useNetwork(SEPOLIA)
+    service.enqueue(H(3))
+    service.enqueue(H(4))
+    await service.processNext()
+
+    // Звено, заякоренное на локальном узле, аудитор Sepolia проверить не
+    // может: связка с ним выглядела бы у него как начало истории без начала
+    const sepoliaLinks = db.getChainLinks(SEPOLIA)
+    expect(sepoliaLinks).toHaveLength(1)
+    expect(sepoliaLinks[0].prev).toBe(genesisRoot())
+
+    expect(verifyChain(db.getChainLinks(LOCAL)).ok).toBe(true)
+    expect(verifyChain(sepoliaLinks).ok).toBe(true)
+  })
+
+  it("реестр: заякоренный в другой сети документ якорится и в текущей", async () => {
+    const service = makeService()
+    service.enqueue(H(1))
+    service.enqueue(H(2))
+    await service.processNext()
+    expect(fake.txCount()).toBe(1)
+
+    // Тот же состав документов в новой сети. Без реактивации запись осталась
+    // бы confirmed навсегда, не будучи в текущем реестре
+    fake.useNetwork(SEPOLIA)
+    service.enqueue(H(1), undefined, SEPOLIA)
+    service.enqueue(H(2), undefined, SEPOLIA)
+    expect(db.getAnchorByHash(H(1))!.status).toBe("pending")
+
+    await service.processNext()
+
+    expect(fake.txCount()).toBe(2)
+    expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
+    expect(db.getAnchorByHash(H(1))!.registry).toBe(SEPOLIA)
+
+    // Корень у пакетов совпал, но это две разные эпохи двух реестров
+    const batches = db.getAnchorBatchesForHash(H(1))
+    expect(batches.map((b) => b.registry).sort()).toEqual([LOCAL, SEPOLIA].sort())
+    expect(batches[0].root).toBe(batches[1].root)
+    expect(batches[0].chain_root).toBe(batches[1].chain_root) // оба от генезиса
+    expect(db.getAnchorRegistriesForHash(H(1)).sort()).toEqual([LOCAL, SEPOLIA].sort())
+  })
+
+  it("реестр: повторная постановка в том же реестре не реактивирует запись", async () => {
+    const service = makeService()
+    service.enqueue(H(1))
+    await service.processNext()
+
+    service.enqueue(H(1), undefined, LOCAL)
+
+    expect(db.getAnchorByHash(H(1))!.status).toBe("confirmed")
+    expect(fake.txCount()).toBe(1)
+  })
+
+  it("реестр: при старте старые пакеты, найденные on-chain, получают метку", async () => {
+    const service = makeService()
+    const found = buildMerkleTree([H(1), H(2)])
+    const lost = buildMerkleTree([H(3), H(4)])
+
+    // Пакеты до учёта реестров: один лежит в текущей сети, второго в ней нет
+    db.createAnchorBatch(found.root, [H(1), H(2)])
+    db.setAnchorBatchTx(found.root, "0xOLD1")
+    db.createAnchorBatch(lost.root, [H(3), H(4)])
+    db.setAnchorBatchTx(lost.root, "0xOLD2")
+    fake.onChain.add(found.root)
+
+    // И подтверждённая одиночная фиксация без реестра
+    const single = db.enqueueAnchor(H(5))
+    db.markAnchorConfirmed(single.id, "0xOLD3")
+    fake.onChain.add(H(5))
+
+    await service.recover()
+
+    expect(db.getAnchorBatch(found.root, LOCAL)?.tx_hash).toBe("0xOLD1")
+    expect(db.getAnchorBatch(found.root, null)).toBeUndefined()
+    expect(db.getAnchorBatch(lost.root, null)?.registry).toBeNull()
+    expect(db.getAnchorByHash(H(5))!.registry).toBe(LOCAL)
+    expect(fake.txCount()).toBe(0)
+  })
+
   it("recovery при недоступном узле не роняет сервис и не трогает записи", async () => {
     const brokenChain: ChainAdapter = {
+      registry: async () => {
+        throw new Error("ECONNREFUSED")
+      },
       isNotarized: async () => {
         throw new Error("ECONNREFUSED")
       },
