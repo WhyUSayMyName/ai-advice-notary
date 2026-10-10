@@ -112,6 +112,14 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     const sentTx = afterCrash.tx_hash
     expect(sentTx).toMatch(/^0x/)
 
+    // Перезапуск случается уже после того, как транзакция попала в блок.
+    // Локальный узел майнит мгновенно, а в настоящей сети без этого ожидания
+    // recovery не нашёл бы хеш on-chain и тест проверял бы не то
+    const { JsonRpcProvider } = await import("ethers")
+    const provider = new JsonRpcProvider(RPC_URL)
+    await provider.waitForTransaction(sentTx!)
+    provider.destroy()
+
     // «перезапуск»: recovery видит хеш on-chain и подтверждает.
     // Повторная отправка невозможна — контракт бы отклонил дубль,
     // но до отправки дело не доходит.
@@ -142,7 +150,9 @@ describe.skipIf(!enabled)("anchor-service e2e против реального у
     for (const h of second) service.enqueue(h)
     await service.processNext()
 
-    const links = db.getChainLinks()
+    // Цепь эпох своя у каждого реестра: без реестра вернулась бы цепь
+    // пакетов, созданных до учёта реестров, — здесь она пуста
+    const links = db.getChainLinks(await adapter.registry())
     expect(links).toHaveLength(2)
 
     // Цепочка непрерывна и начинается от генезиса
