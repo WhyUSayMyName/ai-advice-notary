@@ -11,8 +11,6 @@ function rec(partial: Partial<ArtifactRecord>): ArtifactRecord {
     id: nextId++,
     artifact_id: "art-1",
     display_name: "Doc",
-    // Путь в формате текущей ОС: имя файла берёт path.basename, а он
-    // на Linux не считает обратную косую разделителем
     file_path: path.join("docs", "report.pdf"),
     hash: H(1),
     version: 1,
@@ -187,32 +185,111 @@ describe("evidence-core: реестры", () => {
     members: [H(1)],
   }
 
-  it("документ, заякоренный только в другом реестре, в этом пакете не заякорен", () => {
-    // Иначе аудитор Sepolia получил бы NOT_ON_CHAIN — ложную тревогу о подмене
+  // Аудитор проверяет каждый документ пакета в реестре из заголовка. Чужой
+  // документ получил бы NOT_ON_CHAIN — ложное обвинение в подмене
+  it("документ, заякоренный только в другом реестре, в пакет не попадает", () => {
     const bundle = buildEvidenceBundle(
       [rec({ hash: H(1), notarized: 1, blockchain_tx: "0xTX" })],
       { contract: "0x" + "b".repeat(40), chainId: 11155111 },
       { registry: SEPOLIA, registriesFor: () => [LOCAL], batchFor: () => batch }
     )
 
-    expect(bundle.artifacts[0].notarized).toBe(false)
-    expect(bundle.artifacts[0].batch).toBeUndefined()
+    expect(bundle.artifacts).toEqual([])
   })
 
-  it("якорь в своём реестре и фиксации до учёта реестров остаются заякоренными", () => {
+  it("якорь в своём реестре попадает в пакет вместе с merkle-путём", () => {
     const own = buildEvidenceBundle(
       [rec({ hash: H(1), notarized: 1 })],
       { contract: "0x" + "a".repeat(40), chainId: 31337 },
       { registry: LOCAL, registriesFor: () => [LOCAL, SEPOLIA], batchFor: () => batch }
     )
+    expect(own.artifacts).toHaveLength(1)
     expect(own.artifacts[0].notarized).toBe(true)
     expect(own.artifacts[0].batch?.root).toBe(H(100))
+  })
 
+  // Так выглядел первый живой пакет Sepolia: двадцать документов с давно
+  // остановленного локального узла. Найденные здесь recovery при старте
+  // помечает этим реестром, а без реестра остаётся только ненайденное.
+  // Пропуск безопаснее обвинения
+  it("фиксация без записанного реестра в пакет не попадает", () => {
     const legacy = buildEvidenceBundle(
       [rec({ hash: H(1), notarized: 1 })],
       { contract: "0x" + "a".repeat(40), chainId: 31337 },
       { registry: LOCAL, registriesFor: () => [null] }
     )
-    expect(legacy.artifacts[0].notarized).toBe(true)
+    expect(legacy.artifacts).toEqual([])
+  })
+
+  it("никогда не фиксировавшийся файл в пакет не попадает", () => {
+    const bundle = buildEvidenceBundle(
+      [rec({ hash: H(1), notarized: 0 }), rec({ hash: H(2), notarized: 1, artifact_id: "b" })],
+      { contract: "0x" + "a".repeat(40), chainId: 31337 },
+      { registry: LOCAL, registriesFor: (h) => (h === H(2) ? [LOCAL] : []) }
+    )
+    expect(bundle.artifacts.map((a) => a.hash)).toEqual([H(2)])
+  })
+
+  it("заголовок пакета говорит аудитору, что документы отобраны по реестру", () => {
+    const bundle = buildEvidenceBundle([], { contract: "0x" + "a".repeat(40), chainId: 31337 }, {
+      registry: LOCAL,
+      registriesFor: () => [],
+    })
+    expect(bundle.verification.steps[0]).toMatch(/only documents anchored in the registry/)
+  })
+})
+
+describe("evidence-core: что уходит постороннему", () => {
+  const REG = "11155111:0x" + "b".repeat(40)
+
+  // Пакет отдаётся аудитору; полный путь — это структура папок и имя
+  // учётной записи оператора, и верификатору он не нужен
+  it("в пакете нет абсолютных путей — только имена файлов", () => {
+    const bundle = buildEvidenceBundle(
+      [
+        rec({
+          hash: H(1),
+          notarized: 1,
+          file_path: "C:\\Users\\Operator\\Секретная папка\\Паспорт БВР.pdf",
+          display_name: "C:\\Users\\Operator\\Секретная папка\\Паспорт БВР.pdf",
+        }),
+      ],
+      { contract: "0x" + "b".repeat(40), chainId: 11155111 },
+      { registry: REG, registriesFor: () => [REG] }
+    )
+
+    const json = JSON.stringify(bundle)
+    expect(json).not.toContain("Users")
+    expect(json).not.toContain("Секретная папка")
+    expect(bundle.artifacts[0]).not.toHaveProperty("file_path")
+    expect(bundle.artifacts[0].file_name).toBe("Паспорт БВР.pdf")
+    expect(bundle.artifacts[0].display_name).toBe("Паспорт БВР.pdf")
+  })
+
+  // Так было в живом пакете: три PDF, выбранные при открытом .dxf, хранили
+  // в имени путь к .dxf — и верификатор называл их чужим именем
+  it("имя-путь к чужому файлу заменяется именем собственного файла", () => {
+    const bundle = buildEvidenceBundle(
+      [
+        rec({
+          hash: H(1),
+          notarized: 1,
+          file_path: "D:\\РГЗ\\Лист2_исправленный.pdf",
+          display_name: "D:\\РГЗ\\Лист1_Бурение.dxf",
+        }),
+      ],
+      { contract: "0x" + "b".repeat(40), chainId: 11155111 },
+      { registry: REG, registriesFor: () => [REG] }
+    )
+    expect(bundle.artifacts[0].display_name).toBe("Лист2_исправленный.pdf")
+  })
+
+  it("человеческое имя документа сохраняется как есть", () => {
+    const bundle = buildEvidenceBundle(
+      [rec({ hash: H(1), notarized: 1, display_name: "Паспорт БВР / блок 4" })],
+      { contract: "0x" + "b".repeat(40), chainId: 11155111 },
+      { registry: REG, registriesFor: () => [REG] }
+    )
+    expect(bundle.artifacts[0].display_name).toBe("Паспорт БВР / блок 4")
   })
 })

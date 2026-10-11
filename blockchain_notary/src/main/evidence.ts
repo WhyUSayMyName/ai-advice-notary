@@ -10,17 +10,22 @@ export async function exportEvidenceBundle(rpcUrl?: string): Promise<EvidenceBun
     throw new Error("Missing env: NOTARY_ADDRESS")
   }
 
-  let chainId: number | null = null
+  // Пакет описывает один реестр (chain_id + contract в заголовке), и по нему
+  // отбираются документы. Без узла сеть не узнать, а пакет без отбора смешал
+  // бы документы из разных сетей — аудитор получил бы ложные NOT_ON_CHAIN.
+  // Поэтому без узла экспорт отказывает, а не выдаёт вводящий в заблуждение файл
+  let chainId: number
   try {
     chainId = await notaryChainId(rpcUrl)
-  } catch {
-    // chainId — вспомогательная информация; недоступность узла не блокирует
-    // экспорт: хеши и пруфы в бандле от сети не зависят
+  } catch (e) {
+    throw new Error(
+      "Нет связи с узлом — не определить, к какой сети относится пакет. " +
+        "Подключитесь к узлу и повторите экспорт. " +
+        `(${e instanceof Error ? e.message : String(e)})`
+    )
   }
 
-  // Пакет описывает один реестр (chain_id + contract в заголовке). Без узла
-  // реестр неизвестен — тогда отбор по реестру не делается, как и прежде
-  const registry = chainId !== null ? registryId(chainId, contract) : undefined
+  const registry = registryId(chainId, contract)
   const db = getDatabase()
 
   return buildEvidenceBundle(
@@ -31,7 +36,7 @@ export async function exportEvidenceBundle(rpcUrl?: string): Promise<EvidenceBun
       // заякорен on-chain там, куда пакет доказательств отправит аудитора
       batchFor: (hash) =>
         db.getAnchorBatchesForHash(hash, registry).find((b) => b.tx_hash !== null),
-      registriesFor: registry ? (hash) => db.getAnchorRegistriesForHash(hash) : undefined,
+      registriesFor: (hash) => db.getAnchorRegistriesForHash(hash),
       registry,
     }
   )

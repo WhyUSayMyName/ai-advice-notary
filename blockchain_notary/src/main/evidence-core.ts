@@ -21,12 +21,18 @@ export type EvidenceBatchProof = {
   chain_root?: string
 }
 
+/**
+ * Полного пути к файлу в пакете нет: пакет отдаётся постороннему, а путь —
+ * это структура папок и имя учётной записи оператора. Верификатору хватает
+ * file_name (он ищет файл в своём --dir), а file_path он никогда не читал,
+ * поэтому поле убрано без смены версии формата: проверка старых и новых
+ * пакетов от этого не меняется.
+ */
 export type EvidenceArtifact = {
   artifact_id: string
   display_name: string
   version: number
   file_name: string
-  file_path: string
   hash: string
   previous_hash: string | null
   notarized: boolean
@@ -85,41 +91,62 @@ export function rpcHint(rpcUrl?: string): string | null {
   }
 }
 
+/**
+ * Имя документа для пакета. Человеческое имя («Паспорт БВР») идёт как есть.
+ * Имя в виде абсолютного пути человек сам не выбирал: это либо старое имя
+ * по умолчанию, либо баг, при котором новый файл получал путь открытого
+ * в тот момент документа. В обоих случаях честное имя — имя собственного
+ * файла документа, а путь постороннему ни к чему.
+ */
+function publicName(name: string, filePath: string): string {
+  if (!/^([a-zA-Z]:[\\/]|[\\/])/.test(name)) return name
+  return path.win32.basename(filePath) || name
+}
+
 export function buildEvidenceBundle(
   records: ArtifactRecord[],
   chain: ChainInfo,
   options: EvidenceOptions = {}
 ): EvidenceBundle {
-  const artifacts: EvidenceArtifact[] = [...records]
+  // Пакет описывает один реестр — тот, что в заголовке. Когда он известен,
+  // в пакет попадает только заякоренное в нём. Документ из другой сети,
+  // фиксация без записанного реестра или вовсе не фиксировавшийся файл
+  // проверялись бы аудитором в этом реестре и получали NOT_ON_CHAIN —
+  // ложное обвинение в подмене. Так и было в первом живом пакете Sepolia:
+  // двадцать документов с давно остановленного локального узла. Фиксации
+  // без реестра, которые на самом деле лежат здесь, recovery при старте
+  // находит on-chain и помечает этим реестром — без реестра остаётся только
+  // ненайденное. Пропуск безопаснее обвинения: пакет и не обещает полноты,
+  // а в аудите приложения такие документы видны как REGISTRY_UNKNOWN.
+  const registry = options.registry
+  const registriesFor = options.registriesFor
+  const scoped = registry !== undefined && registriesFor !== undefined
+  const selected = scoped
+    ? records.filter((r) => anchorScope(registriesFor(r.hash), registry).kind === "current")
+    : records
+
+  const artifacts: EvidenceArtifact[] = [...selected]
     .sort((a, b) =>
       a.artifact_id === b.artifact_id
         ? a.version - b.version
         : a.artifact_id.localeCompare(b.artifact_id)
     )
     .map((r) => {
-      // notarized в пакете означает «заякорено в реестре из заголовка».
-      // Документ, заякоренный только в другой сети, здесь не заякорен:
-      // пометь его заякоренным — и аудитор получит NOT_ON_CHAIN, ложную
-      // тревогу о подмене. Фиксации без учёта реестра остаются как были
-      const elsewhere =
-        options.registry !== undefined &&
-        options.registriesFor !== undefined &&
-        anchorScope(options.registriesFor(r.hash), options.registry).kind === "elsewhere"
-
       const entry: EvidenceArtifact = {
         artifact_id: r.artifact_id,
-        display_name: r.display_name,
+        display_name: publicName(r.display_name, r.file_path),
         version: r.version,
-        file_name: path.basename(r.file_path),
-        file_path: r.file_path,
+        // win32-разбор понимает оба разделителя: пакет с Windows-путями
+        // собирается одинаково на любой ОС
+        file_name: path.win32.basename(r.file_path),
         hash: r.hash,
         previous_hash: r.previous_hash,
-        notarized: Boolean(r.notarized) && !elsewhere,
+        notarized: Boolean(r.notarized),
         blockchain_tx: r.blockchain_tx,
         created_at: r.created_at,
       }
 
-      const batch = elsewhere ? undefined : options.batchFor?.(r.hash)
+      const batch = options.batchFor?.(r.hash)
       if (batch) {
         // Proof пересчитывается из состава пакета в момент экспорта —
         // хранить его не нужно, канон дерева детерминирован
@@ -150,6 +177,12 @@ export function buildEvidenceBundle(
     verification: {
       tool: "notary-verify (verifier-cli in https://github.com/WhyUSayMyName/ai-advice-notary)",
       steps: [
+        ...(scoped
+          ? [
+              "This bundle covers only documents anchored in the registry named in its header " +
+                "(chain_id + contract). Documents anchored elsewhere or never anchored are not included.",
+            ]
+          : []),
         "Obtain the contract address from a source you trust, not only from this file.",
         "Use a JSON-RPC node you control or trust (rpc_url_hint is a hint, not a guarantee).",
         "Run: notary-verify --bundle <this file> --dir <directory with the documents> --rpc <url>",
