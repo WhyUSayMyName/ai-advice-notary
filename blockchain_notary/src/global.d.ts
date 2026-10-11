@@ -260,6 +260,25 @@ type AnchorUpdateEvent = {
         error?: string
       }>
 
+      /**
+       * Заякорен ли хеш — с учётом пакетов: документ из эпохи лежит в реестре
+       * через голову цепи, и прямой запрос к контракту его не находит.
+       */
+      resolveAnchor: (
+        hashHex: string,
+        rpcUrl?: string
+      ) => Promise<{
+        ok: boolean
+        exists?: boolean
+        author?: string
+        timestamp?: number
+        via?: "direct" | "batch" | "none"
+        root?: string | null
+        /** Транзакция эпохи; у прямой фиксации — null */
+        txHash?: string | null
+        error?: string
+      }>
+
       notaryGetRecord: (
         hashHex: string,
         rpcUrl?: string

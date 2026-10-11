@@ -6,6 +6,7 @@ import {
   notarizeArtifact,
   notarizeArtifactVersion,
   verifyArtifact,
+  resolveAnchoredRecord,
   listArtifacts,
   listArtifactHistory,
 } from "./artifacts"
@@ -78,6 +79,17 @@ ipcMain.handle(
     }
   }
 )
+
+// Заякорен ли хеш — с учётом пакетов. Прямой запрос к контракту здесь не
+// годится: документ из эпохи лежит в реестре не сам, а через голову цепи,
+// и контракт ответил бы «не заякорен»
+ipcMain.handle("notary:resolve", async (_event, hash: string, rpcUrl?: string) => {
+  try {
+    return { ok: true, ...(await resolveAnchoredRecord(hash, rpcUrl)) }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
 
 ipcMain.handle("artifact:verify", async (_event, filePath: string, rpcUrl?: string) => {
   try {

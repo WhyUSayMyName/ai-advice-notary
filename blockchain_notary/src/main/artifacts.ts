@@ -138,7 +138,14 @@ export async function notarizeArtifactVersion(
 export async function resolveAnchoredRecord(hash: string, rpcUrl?: string) {
   const direct = await notaryGetRecord(hash, rpcUrl)
   if (direct.exists) {
-    return { ...direct, via: "direct" as const, root: null as string | null }
+    // Транзакция прямой фиксации из записи реестра не восстановить — она
+    // хранится у артефакта (blockchain_tx)
+    return {
+      ...direct,
+      via: "direct" as const,
+      root: null as string | null,
+      txHash: null as string | null,
+    }
   }
 
   const registry = await notaryRegistry(rpcUrl)
@@ -148,7 +155,7 @@ export async function resolveAnchoredRecord(hash: string, rpcUrl?: string) {
     const anchored = batch.chain_root ?? batch.root
     const viaRoot = await notaryGetRecord(anchored, rpcUrl)
     if (viaRoot.exists) {
-      return { ...viaRoot, via: "batch" as const, root: batch.root }
+      return { ...viaRoot, via: "batch" as const, root: batch.root, txHash: batch.tx_hash }
     }
   }
 
@@ -158,6 +165,7 @@ export async function resolveAnchoredRecord(hash: string, rpcUrl?: string) {
     timestamp: 0,
     via: "none" as const,
     root: null as string | null,
+    txHash: null as string | null,
   }
 }
 

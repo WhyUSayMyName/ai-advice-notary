@@ -47,6 +47,9 @@ contextBridge.exposeInMainWorld("api", {
   notaryIsNotarized: (hashHex: string, rpcUrl?: string) =>
     ipcRenderer.invoke("notary:isNotarized", hashHex, rpcUrl),
 
+  resolveAnchor: (hashHex: string, rpcUrl?: string) =>
+    ipcRenderer.invoke("notary:resolve", hashHex, rpcUrl),
+
   notaryGetRecord: (hashHex: string, rpcUrl?: string) =>
     ipcRenderer.invoke("notary:getRecord", hashHex, rpcUrl),
 

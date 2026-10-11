@@ -301,22 +301,29 @@ export default function App() {
   const checkHash = async (currentHash: string) => {
     if (!(currentHash.startsWith("0x") && currentHash.length === 66)) return
 
-    const r = await window.api.notaryIsNotarized(currentHash, nodeOf(rpcUrl))
+    // Не прямой запрос к контракту: документ из эпохи лежит в реестре через
+    // голову цепи, и контракт ответил бы «не заякорен». Из-за этого для
+    // документов из пакета не работали ни «Проверить», ни «Сертификат»
+    const r = await window.api.resolveAnchor(currentHash, nodeOf(rpcUrl))
     if (!r.ok) {
       log(`Ошибка проверки: ${r.error}`)
       return
     }
 
-    const isN = Boolean(r.notarized)
+    const isN = Boolean(r.exists)
     setNotarized(isN)
-    log(isN ? `Хеш ${short(currentHash)} найден в реестре` : `Хеш ${short(currentHash)} не заякорен`)
 
     if (isN) {
-      const rr = await window.api.notaryGetRecord(currentHash, nodeOf(rpcUrl))
-      if (rr.ok && rr.exists) {
-        setRecord({ author: rr.author ?? "", timestamp: rr.timestamp ?? 0 })
-      }
+      log(
+        r.via === "batch"
+          ? `Хеш ${short(currentHash)} найден в реестре — в составе эпохи ${short(r.root ?? "")}`
+          : `Хеш ${short(currentHash)} найден в реестре`
+      )
+      setRecord({ author: r.author ?? "", timestamp: r.timestamp ?? 0 })
+      // Сертификату нужна транзакция; у документа из эпохи это транзакция эпохи
+      if (r.txHash) setTxHash((cur) => cur || r.txHash || "")
     } else {
+      log(`Хеш ${short(currentHash)} не заякорен`)
       setRecord(null)
     }
   }
