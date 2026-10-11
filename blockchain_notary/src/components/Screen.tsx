@@ -14,7 +14,11 @@ export function Screen({
   children: React.ReactNode
 }) {
   return (
-    <div className="relative flex min-w-0 flex-1 flex-col">
+    // min-h-0 обязателен: во flex-колонке элемент по умолчанию не бывает ниже
+    // своего содержимого. Без него экран рос под таблицу, его прокрутке нечего
+    // было прокручивать, а лишнее молча обрезал overflow-hidden окна —
+    // колёсико мыши работало только в журнале, у которого жёсткий max-height
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Отсвет разлома над рабочей зоной — на пределе заметности,
           чтобы не спорить с плотными таблицами */}
       <div className="glow pointer-events-none absolute inset-x-0 top-0 h-56 opacity-50" />
