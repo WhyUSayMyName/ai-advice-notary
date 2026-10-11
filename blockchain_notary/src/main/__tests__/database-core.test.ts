@@ -22,6 +22,18 @@ describe("database-core", () => {
     db.close()
   })
 
+  // Полный путь в имени расползался по отчётам и пакету доказательств,
+  // который уходит постороннему: путь уже лежит в file_path
+  it("без явного имени документ называется именем файла, а не путём", () => {
+    const winId = db.createArtifact("D:\\Уник\\РГЗ\\Лист2.pdf", H(1))
+    const posixId = db.createArtifact("/home/op/docs/Паспорт БВР.pdf", H(2))
+
+    expect(db.getLatestArtifactVersion(winId)!.display_name).toBe("Лист2.pdf")
+    expect(db.getLatestArtifactVersion(posixId)!.display_name).toBe("Паспорт БВР.pdf")
+    // Путь при этом никуда не делся
+    expect(db.getLatestArtifactVersion(winId)!.file_path).toBe("D:\\Уник\\РГЗ\\Лист2.pdf")
+  })
+
   it("создаёт артефакт с версией 1 без previous_hash", () => {
     const id = db.createArtifact("C:/docs/a.pdf", H(1), "Журнал ТБ")
     const latest = db.getLatestArtifactVersion(id)

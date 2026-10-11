@@ -341,7 +341,10 @@ export default function App() {
     log(`Файл: ${nextFilePath}`)
     log(`SHA-256: ${nextHash}`)
 
-    const reg = await window.api.registerArtifact(nextFilePath, selectedArtifact?.display_name)
+    // Новый файл — новый документ со своим именем. Раньше сюда передавалось
+    // имя открытого документа, и файлы, выбранные при открытом документе,
+    // регистрировались под чужим именем. Новая версия — отдельная кнопка
+    const reg = await window.api.registerArtifact(nextFilePath)
     if (!reg.ok) log(`Ошибка локального сохранения: ${reg.error}`)
     else log("Файл сохранён в локальном реестре")
 
@@ -379,7 +382,7 @@ export default function App() {
     log(`Файл: ${nextFilePath}`)
     log(`SHA-256: ${nextHash}`)
 
-    const reg = await window.api.registerArtifact(nextFilePath, selectedArtifact?.display_name)
+    const reg = await window.api.registerArtifact(nextFilePath)
     if (!reg.ok) log(`Ошибка локального сохранения: ${reg.error}`)
 
     await refreshAll()
@@ -393,7 +396,7 @@ export default function App() {
     }
 
     log(`Нотаризация: ${filePath}`)
-    const r = await window.api.notarizeArtifact(filePath, selectedArtifact?.display_name)
+    const r = await window.api.notarizeArtifact(filePath)
     if (!r.ok) {
       log(`Ошибка нотаризации: ${r.error}`)
       return

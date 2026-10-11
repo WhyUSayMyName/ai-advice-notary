@@ -1,5 +1,16 @@
 import Database from "better-sqlite3"
 import crypto from "node:crypto"
+import path from "node:path"
+
+/**
+ * Имя документа по умолчанию — имя файла, а не путь. Полный путь уже лежит
+ * в file_path; продублированный в имени, он расползался по отчётам и пакету
+ * доказательств, который уходит постороннему. win32-вариант понимает оба
+ * разделителя на любой ОС: пути с Windows разбираются и в Linux-CI.
+ */
+export function defaultDisplayName(filePath: string): string {
+  return path.win32.basename(filePath) || filePath
+}
 
 export type ArtifactRecord = {
   id: number
@@ -320,7 +331,7 @@ export function createDatabase(dbPath: string) {
 
   function createArtifact(filePath: string, hash: string, displayName?: string): string {
     const artifactId = crypto.randomUUID()
-    const normalizedDisplayName = displayName?.trim() || filePath
+    const normalizedDisplayName = displayName?.trim() || defaultDisplayName(filePath)
 
     db.prepare(`
       INSERT INTO artifacts
@@ -353,7 +364,8 @@ export function createDatabase(dbPath: string) {
         )
       }
 
-      const normalizedDisplayName = displayName?.trim() || latest.display_name || filePath
+      const normalizedDisplayName =
+        displayName?.trim() || latest.display_name || defaultDisplayName(filePath)
 
       const info = db
         .prepare(`
